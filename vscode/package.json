@@ -2,7 +2,7 @@
   "name": "android-studio-bridge-vscode",
   "displayName": "Android Studio Bridge",
   "description": "Quietly open HTML source-link nodes in Android Studio at the requested line and column.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "learner-geek-perfectionist",
   "license": "MIT",
   "engines": {
@@ -55,7 +55,7 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "test": "npm run compile && node --test out/test/**/*.test.js",
-    "package": "mkdir -p ../dist && vsce package --allow-missing-repository --out ../dist/android-studio-bridge-vscode-0.1.0.vsix"
+    "package": "mkdir -p ../dist && vsce package --allow-missing-repository --out ../dist/android-studio-bridge-vscode-0.1.1.vsix"
   },
   "devDependencies": {
     "@types/node": "^20.14.10",

@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class BridgeHttpServerTest {
@@ -120,6 +121,29 @@ final class BridgeHttpServerTest {
             assertEquals(403, escaping.statusCode());
         } finally {
             server.close();
+        }
+    }
+
+    @Test
+    void reportsAddressInUseWhenConfiguredPortIsAlreadyOwned() throws Exception {
+        BridgeHttpServer first = BridgeHttpServer.start(
+                new BridgeRuntimeConfig(root.toString(), 0, true),
+                ignored -> {
+                }
+        );
+
+        try {
+            Exception error = assertThrows(Exception.class, () ->
+                    BridgeHttpServer.start(
+                            new BridgeRuntimeConfig(root.toString(), first.port(), true),
+                            ignored -> {
+                            }
+                    )
+            );
+
+            assertTrue(BridgeHttpServer.isAddressInUse(error));
+        } finally {
+            first.close();
         }
     }
 }

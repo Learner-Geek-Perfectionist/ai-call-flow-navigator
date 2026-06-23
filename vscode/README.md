@@ -1,14 +1,14 @@
 # Android Studio Bridge
 
-Open source links from an HTML call-chain page in Android Studio at the
-requested line and column.
+VS Code 版 Android Studio Bridge 用来让 HTML 调用链页面里的节点跳转到
+Android Studio 源码文件的指定行列。
 
-The extension starts a local HTTP bridge on `127.0.0.1`. HTML links call the
-bridge, and the bridge launches the configured Android Studio executable.
+插件会在 `127.0.0.1` 启动本地 HTTP bridge。HTML 节点请求 bridge 后，插件调用配置的
+Android Studio 可执行文件打开源码。
 
-## Configuration
+## 配置
 
-Set these in VS Code settings:
+在 VS Code settings 中配置：
 
 ```json
 {
@@ -18,25 +18,24 @@ Set these in VS Code settings:
 }
 ```
 
-`asBridge.projectRoot` is the source root used to resolve relative paths from
-HTML links. If it is empty, the extension uses the first VS Code workspace
-folder.
+`asBridge.projectRoot` 用来解析 HTML 节点里的相对路径。为空时，插件使用第一个
+VS Code workspace folder。
 
-`asBridge.androidStudioExecutable` is the Android Studio launcher or executable.
-On Windows, prefer an absolute path to `studio64.exe`. On macOS or Linux, a
-command-line launcher such as `studio` also works if it is on `PATH`.
+`asBridge.androidStudioExecutable` 是 Android Studio launcher 或可执行文件路径。
+Windows 建议配置 `studio64.exe` 的绝对路径。macOS / Linux 如果 `studio` 在 `PATH`
+里，也可以直接配置 `studio`。
 
-`asBridge.port` defaults to `17321`. The server listens on `127.0.0.1` only.
+`asBridge.port` 默认是 `17321`。server 只监听 `127.0.0.1`。
 
-## HTML Target Format
+## HTML 节点格式
 
-Add the bridge helper once in the HTML `<head>`:
+在 HTML `<head>` 中引入一次 helper：
 
 ```html
 <script src="http://127.0.0.1:17321/as-bridge.js"></script>
 ```
 
-Then generate non-navigating targets like this:
+节点使用 `data-as-*`，不要使用 `href`：
 
 ```html
 <a
@@ -50,25 +49,29 @@ Then generate non-navigating targets like this:
 </a>
 ```
 
-`data-as-path` must be relative to `asBridge.projectRoot`. Absolute paths and
-`../` traversal are rejected.
+`data-as-path` 必须相对 `asBridge.projectRoot`。绝对路径和 `../` 越界路径都会被拒绝。
 
-Do not put the bridge URL in `href`. With no navigable `href`, the browser has
-no URL to open in a new tab. The helper reads `data-as-*`, sends a background
-request to the bridge, and handles ordinary HTML elements, SVG elements, nested
-SVG children, keyboard activation, and modifier or middle-click activation.
+不要把 bridge URL 放进 `href`。没有可导航 `href` 后，浏览器没有 URL 可以打开成新
+tab。helper 会读取 `data-as-*`，后台请求 bridge，并处理普通 HTML 元素、SVG 元素、
+嵌套 SVG 子元素、键盘激活、Cmd/Ctrl 点击和中键点击。
 
-If another VS Code window already owns the configured port, later windows reuse
-that existing bridge instead of starting a second server.
+## 端口复用
 
-## Commands
+如果另一个 VS Code 窗口、Android Studio 插件或其他 bridge 已经占用了配置端口，本
+插件不会报错。它会进入 reusing 状态，不再启动第二个 server。
+
+注意：真正处理请求的是先启动并占用端口的 bridge，所以 project root 也以先启动者为准。
+如果两个插件配置的 root 不一样，请只启用一个 bridge，或者给其中一个改端口，并让 HTML
+引用对应端口的 `/as-bridge.js`。
+
+## 命令
 
 - `Android Studio Bridge: Restart Server`
 - `Android Studio Bridge: Show Status`
 
-The status bar item shows the active bridge port when the server is running.
+状态栏会显示当前 bridge 端口或 reusing 状态。
 
-## Development
+## 开发
 
 ```bash
 npm install
@@ -76,4 +79,4 @@ npm test
 npm run package
 ```
 
-The package command creates `../dist/android-studio-bridge-vscode-0.1.0.vsix`.
+打包命令会生成 `../dist/android-studio-bridge-vscode-0.1.1.vsix`。
