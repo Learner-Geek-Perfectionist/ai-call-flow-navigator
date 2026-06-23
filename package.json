@@ -1,0 +1,17 @@
+{
+  "name": "android-studio-bridge-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "description": "VS Code and Android Studio plugins for quiet HTML source-link navigation.",
+  "license": "MIT",
+  "scripts": {
+    "install:vscode": "npm --prefix vscode install",
+    "compile:vscode": "npm --prefix vscode run compile",
+    "test:vscode": "npm --prefix vscode test",
+    "test:jetbrains": "cd jetbrains && ./gradlew test --no-daemon",
+    "test": "npm run test:vscode && npm run test:jetbrains",
+    "package:vscode": "npm --prefix vscode run package",
+    "package:jetbrains": "cd jetbrains && ./gradlew buildPlugin --no-daemon",
+    "package": "npm run package:vscode && npm run package:jetbrains"
+  }
+}

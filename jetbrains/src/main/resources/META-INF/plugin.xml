@@ -1,0 +1,16 @@
+<idea-plugin>
+    <id>com.ouyang.asbridge</id>
+    <name>Android Studio Bridge</name>
+    <vendor url="https://github.com/Learner-Geek-Perfectionist/android-studio-bridge">Learner-Geek-Perfectionist</vendor>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <projectService serviceImplementation="com.ouyang.asbridge.AndroidStudioBridgeSettings"/>
+        <projectService serviceImplementation="com.ouyang.asbridge.AndroidStudioBridgeProjectService"/>
+        <postStartupActivity implementation="com.ouyang.asbridge.AndroidStudioBridgeStartupActivity"/>
+        <projectConfigurable parentId="tools"
+                             instance="com.ouyang.asbridge.AndroidStudioBridgeConfigurable"
+                             displayName="Android Studio Bridge"/>
+    </extensions>
+</idea-plugin>

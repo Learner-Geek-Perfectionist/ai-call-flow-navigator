@@ -1,0 +1,11 @@
+.DS_Store
+dist/
+
+vscode/node_modules/
+vscode/out/
+vscode/*.vsix
+
+jetbrains/.gradle/
+jetbrains/.intellijPlatform/
+jetbrains/.kotlin/
+jetbrains/build/
