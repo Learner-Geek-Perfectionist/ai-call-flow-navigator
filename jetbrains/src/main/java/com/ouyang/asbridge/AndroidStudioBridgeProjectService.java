@@ -5,11 +5,13 @@ import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.wm.IdeFocusManager;
 import com.intellij.openapi.wm.StatusBar;
 import org.jetbrains.annotations.NotNull;
 
@@ -19,11 +21,15 @@ public final class AndroidStudioBridgeProjectService implements Disposable {
     private static final Logger LOG = Logger.getInstance(AndroidStudioBridgeProjectService.class);
 
     private final Project project;
+    private final EditorFocusSupport editorFocusSupport;
     private BridgeHttpServer server;
     private int reusedPort = -1;
 
     public AndroidStudioBridgeProjectService(@NotNull Project project) {
         this.project = project;
+        this.editorFocusSupport = new EditorFocusSupport((component, forced) ->
+                IdeFocusManager.getInstance(project).requestFocus(component, forced)
+        );
     }
 
     public synchronized void start() {
@@ -121,7 +127,10 @@ public final class AndroidStudioBridgeProjectService implements Disposable {
                 request.column() - 1
         );
         FileEditorManager manager = FileEditorManager.getInstance(project);
-        if (manager.openTextEditor(descriptor, true) == null) {
+        Editor editor = manager.openTextEditor(descriptor, true);
+        if (editor != null) {
+            editorFocusSupport.focus(editor.getContentComponent());
+        } else {
             manager.openEditor(descriptor, true);
         }
     }

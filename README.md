@@ -124,8 +124,8 @@ npm run package
 产物位置：
 
 ```text
-dist/android-studio-bridge-vscode-0.1.1.vsix
-jetbrains/build/distributions/android-studio-bridge-jetbrains-0.1.1.zip
+dist/android-studio-bridge-vscode-0.1.2.vsix
+jetbrains/build/distributions/android-studio-bridge-jetbrains-0.1.2.zip
 ```
 
 ## 许可证

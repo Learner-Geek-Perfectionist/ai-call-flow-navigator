@@ -70,5 +70,5 @@ project root 使用 owner 的配置。
 插件包生成在：
 
 ```text
-build/distributions/android-studio-bridge-jetbrains-0.1.1.zip
+build/distributions/android-studio-bridge-jetbrains-0.1.2.zip
 ```
