@@ -1,6 +1,10 @@
 package com.ouyang.asbridge;
 
-record BridgeRuntimeConfig(String projectRoot, int port, boolean enabled) {
+record BridgeRuntimeConfig(String projectRoot, int port, boolean enabled, boolean focusEditor) {
+    BridgeRuntimeConfig(String projectRoot, int port, boolean enabled) {
+        this(projectRoot, port, enabled, false);
+    }
+
     BridgeRuntimeConfig {
         if (projectRoot == null || projectRoot.isBlank()) {
             throw new IllegalArgumentException("projectRoot is required");

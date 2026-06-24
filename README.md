@@ -77,6 +77,7 @@ bridge，浏览器地址栏保持在原来的 HTML 页面。helper 支持普通 
 - project root：当前 IDE 项目根目录
 - port：`17321`
 - enabled：`true`
+- focus editor：`false`，默认打开文件但不强制激活 Android Studio 窗口
 
 配置入口：
 
@@ -124,8 +125,8 @@ npm run package
 产物位置：
 
 ```text
-dist/android-studio-bridge-vscode-0.1.2.vsix
-jetbrains/build/distributions/android-studio-bridge-jetbrains-0.1.2.zip
+dist/android-studio-bridge-vscode-0.1.3.vsix
+jetbrains/build/distributions/android-studio-bridge-jetbrains-0.1.3.zip
 ```
 
 ## 许可证

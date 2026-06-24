@@ -10,8 +10,10 @@ final class EditorFocusSupport {
         this.focusRequester = Objects.requireNonNull(focusRequester);
     }
 
-    void focus(Component component) {
-        focusRequester.requestFocus(component, true);
+    void focusIfRequested(Component component, boolean focusEditor) {
+        if (focusEditor) {
+            focusRequester.requestFocus(component, true);
+        }
     }
 
     @FunctionalInterface

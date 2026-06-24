@@ -49,7 +49,7 @@ public final class AndroidStudioBridgeProjectService implements Disposable {
         }
 
         try {
-            server = BridgeHttpServer.start(config, this::openSource);
+            server = BridgeHttpServer.start(config, request -> openSource(request, config.focusEditor()));
             reusedPort = -1;
             setStatus("Android Studio Bridge: listening on 127.0.0.1:" + server.port());
         } catch (IOException error) {
@@ -99,9 +99,9 @@ public final class AndroidStudioBridgeProjectService implements Disposable {
         reusedPort = -1;
     }
 
-    private void openSource(ResolvedOpenRequest request) {
+    private void openSource(ResolvedOpenRequest request, boolean focusEditor) {
         Application application = ApplicationManager.getApplication();
-        Runnable task = () -> openSourceOnEdt(request);
+        Runnable task = () -> openSourceOnEdt(request, focusEditor);
         if (application.isDispatchThread()) {
             task.run();
         } else {
@@ -109,7 +109,7 @@ public final class AndroidStudioBridgeProjectService implements Disposable {
         }
     }
 
-    private void openSourceOnEdt(ResolvedOpenRequest request) {
+    private void openSourceOnEdt(ResolvedOpenRequest request, boolean focusEditor) {
         if (project.isDisposed()) {
             return;
         }
@@ -127,11 +127,11 @@ public final class AndroidStudioBridgeProjectService implements Disposable {
                 request.column() - 1
         );
         FileEditorManager manager = FileEditorManager.getInstance(project);
-        Editor editor = manager.openTextEditor(descriptor, true);
+        Editor editor = manager.openTextEditor(descriptor, focusEditor);
         if (editor != null) {
-            editorFocusSupport.focus(editor.getContentComponent());
+            editorFocusSupport.focusIfRequested(editor.getContentComponent(), focusEditor);
         } else {
-            manager.openEditor(descriptor, true);
+            manager.openEditor(descriptor, focusEditor);
         }
     }
 

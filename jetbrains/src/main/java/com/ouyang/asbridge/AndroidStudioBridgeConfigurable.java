@@ -20,6 +20,7 @@ public final class AndroidStudioBridgeConfigurable implements SearchableConfigur
     private final Project project;
     private JPanel panel;
     private JCheckBox enabledField;
+    private JCheckBox focusEditorField;
     private JTextField projectRootField;
     private JTextField portField;
 
@@ -40,6 +41,7 @@ public final class AndroidStudioBridgeConfigurable implements SearchableConfigur
     @Override
     public JComponent createComponent() {
         enabledField = new JCheckBox("Enable local bridge", true);
+        focusEditorField = new JCheckBox("Focus editor after opening source", false);
         projectRootField = new JTextField();
         portField = new JTextField();
 
@@ -55,8 +57,11 @@ public final class AndroidStudioBridgeConfigurable implements SearchableConfigur
         constraints.weightx = 1.0;
         panel.add(enabledField, constraints);
 
-        addRow(1, "Project root", projectRootField);
-        addRow(2, "Port", portField);
+        constraints.gridy = 1;
+        panel.add(focusEditorField, constraints);
+
+        addRow(2, "Project root", projectRootField);
+        addRow(3, "Port", portField);
         reset();
         return panel;
     }
@@ -65,6 +70,7 @@ public final class AndroidStudioBridgeConfigurable implements SearchableConfigur
     public boolean isModified() {
         AndroidStudioBridgeSettings.SettingsState state = settings().getState();
         return enabledField.isSelected() != state.enabled
+                || focusEditorField.isSelected() != state.focusEditor
                 || !Objects.equals(projectRootField.getText().trim(), nullToEmpty(state.projectRoot))
                 || !Objects.equals(portField.getText().trim(), Integer.toString(state.port));
     }
@@ -83,6 +89,7 @@ public final class AndroidStudioBridgeConfigurable implements SearchableConfigur
 
         AndroidStudioBridgeSettings.SettingsState state = settings().getState();
         state.enabled = enabledField.isSelected();
+        state.focusEditor = focusEditorField.isSelected();
         state.projectRoot = projectRootField.getText().trim();
         state.port = port;
         project.getService(AndroidStudioBridgeProjectService.class).restart();
@@ -92,6 +99,7 @@ public final class AndroidStudioBridgeConfigurable implements SearchableConfigur
     public void reset() {
         AndroidStudioBridgeSettings.SettingsState state = settings().getState();
         enabledField.setSelected(state.enabled);
+        focusEditorField.setSelected(state.focusEditor);
         projectRootField.setText(nullToEmpty(state.projectRoot));
         portField.setText(Integer.toString(state.port));
     }
@@ -100,6 +108,7 @@ public final class AndroidStudioBridgeConfigurable implements SearchableConfigur
     public void disposeUIResources() {
         panel = null;
         enabledField = null;
+        focusEditorField = null;
         projectRootField = null;
         portField = null;
     }

@@ -29,6 +29,8 @@ Settings | Tools | Android Studio Bridge
 配置项：
 
 - `Enable local bridge`：控制当前项目是否启动 bridge。
+- `Focus editor after opening source`：打开源码后是否强制聚焦编辑器。默认关闭，适合在
+  Windows 上避免任务栏图标反复进入激活/提醒状态。
 - `Project root`：源码根目录。为空时使用当前 IDE 项目根目录。
 - `Port`：本地 bridge 端口，默认 `17321`。
 
@@ -70,5 +72,5 @@ project root 使用 owner 的配置。
 插件包生成在：
 
 ```text
-build/distributions/android-studio-bridge-jetbrains-0.1.2.zip
+build/distributions/android-studio-bridge-jetbrains-0.1.3.zip
 ```

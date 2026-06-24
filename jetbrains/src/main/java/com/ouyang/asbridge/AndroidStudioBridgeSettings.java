@@ -34,12 +34,13 @@ public final class AndroidStudioBridgeSettings implements PersistentStateCompone
         String configuredRoot = state.projectRoot == null ? "" : state.projectRoot.trim();
         String fallbackRoot = projectBasePath == null ? "" : projectBasePath.trim();
         String root = configuredRoot.isEmpty() ? fallbackRoot : configuredRoot;
-        return new BridgeRuntimeConfig(root, state.port, state.enabled);
+        return new BridgeRuntimeConfig(root, state.port, state.enabled, state.focusEditor);
     }
 
     public static final class SettingsState {
         public String projectRoot = "";
         public int port = 17321;
         public boolean enabled = true;
+        public boolean focusEditor = false;
     }
 }

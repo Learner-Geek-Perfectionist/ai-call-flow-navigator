@@ -3,6 +3,7 @@ package com.ouyang.asbridge;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class AndroidStudioBridgeSettingsTest {
@@ -15,6 +16,7 @@ final class AndroidStudioBridgeSettingsTest {
         assertEquals("/tmp/MyApplication", config.projectRoot());
         assertEquals(17321, config.port());
         assertTrue(config.enabled());
+        assertFalse(config.focusEditor());
     }
 
     @Test
@@ -27,5 +29,15 @@ final class AndroidStudioBridgeSettingsTest {
 
         assertEquals("/tmp/AndroidRoot", config.projectRoot());
         assertEquals(18181, config.port());
+    }
+
+    @Test
+    void configuredFocusEditorIsIncludedInRuntimeConfig() {
+        AndroidStudioBridgeSettings settings = new AndroidStudioBridgeSettings();
+        settings.getState().focusEditor = true;
+
+        BridgeRuntimeConfig config = settings.toRuntimeConfig("/tmp/MyApplication");
+
+        assertTrue(config.focusEditor());
     }
 }

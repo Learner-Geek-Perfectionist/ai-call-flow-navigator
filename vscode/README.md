@@ -91,5 +91,5 @@ npm run package
 打包命令会生成：
 
 ```text
-../dist/android-studio-bridge-vscode-0.1.2.vsix
+../dist/android-studio-bridge-vscode-0.1.3.vsix
 ```
