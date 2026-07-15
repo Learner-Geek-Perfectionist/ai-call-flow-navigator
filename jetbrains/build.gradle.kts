@@ -72,7 +72,7 @@ intellijPlatform {
         description = """
             Loads Call Flow JSON files produced by local AI tools for the current
             Android Studio project. Explore complete call flows with native step-by-step
-            playback and exact source navigation, without settings or network services.
+            playback, exact source navigation, and a local file inbox.
         """.trimIndent()
 
         vendor {

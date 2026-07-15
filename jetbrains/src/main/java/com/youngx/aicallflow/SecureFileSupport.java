@@ -255,7 +255,7 @@ final class SecureFileSupport {
         }
     }
 
-    private static String randomUrlSafeString(int byteCount) {
+    static String randomUrlSafeString(int byteCount) {
         byte[] bytes = new byte[byteCount];
         SECURE_RANDOM.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);

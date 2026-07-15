@@ -30,10 +30,6 @@ def is_han(character: str) -> bool:
     )
 
 
-def is_cjk_boundary(character: str) -> bool:
-    return is_han(character) or character in CJK_PUNCTUATION
-
-
 def is_indented_code(line: str) -> bool:
     return line.startswith("    ") or line.startswith("\t")
 

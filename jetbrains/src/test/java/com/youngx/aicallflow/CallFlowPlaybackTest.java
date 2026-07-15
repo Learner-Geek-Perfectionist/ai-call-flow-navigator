@@ -96,7 +96,6 @@ final class CallFlowPlaybackTest {
         CallFlow terminalFlow = new CallFlow(
                 CallFlow.SUPPORTED_VERSION,
                 "Terminal flow",
-                null,
                 List.of(onlyNode),
                 List.of(),
                 "only"
@@ -121,7 +120,6 @@ final class CallFlowPlaybackTest {
         return new CallFlow(
                 CallFlow.SUPPORTED_VERSION,
                 "Test flow",
-                null,
                 List.of(entry, inside, over, after),
                 List.of(
                         new CallFlowEdge("entry", "inside", EdgeKind.STEP_INTO, "enter call"),

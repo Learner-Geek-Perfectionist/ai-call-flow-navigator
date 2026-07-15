@@ -4,12 +4,10 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Deque;
-import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * Pure Java playback state for a {@link CallFlow}.
@@ -108,15 +106,15 @@ public final class CallFlowPlayback {
     }
 
     public List<Candidate> stepInto() {
-        return candidatesFor(EnumSet.of(EdgeKind.STEP_INTO));
+        return candidatesFor(EdgeKind.STEP_INTO);
     }
 
     public List<Candidate> stepOver() {
-        return candidatesFor(EnumSet.of(EdgeKind.STEP_OVER));
+        return candidatesFor(EdgeKind.STEP_OVER);
     }
 
     public List<Candidate> stepOut() {
-        return candidatesFor(EnumSet.of(EdgeKind.STEP_OUT));
+        return candidatesFor(EdgeKind.STEP_OUT);
     }
 
     /**
@@ -152,10 +150,10 @@ public final class CallFlowPlayback {
         return current();
     }
 
-    private List<Candidate> candidatesFor(Set<EdgeKind> kinds) {
+    private List<Candidate> candidatesFor(EdgeKind kind) {
         requireLoaded();
         return next().stream()
-                .filter(candidate -> kinds.contains(candidate.edge().kind()))
+                .filter(candidate -> candidate.edge().kind() == kind)
                 .toList();
     }
 

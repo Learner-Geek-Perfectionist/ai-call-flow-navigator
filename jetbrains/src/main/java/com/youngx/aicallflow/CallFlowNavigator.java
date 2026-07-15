@@ -37,11 +37,8 @@ public final class CallFlowNavigator implements Disposable {
     }
 
     public record NavigationResult(
-            Path absolutePath,
             int line,
             int column,
-            int highlightStartOffset,
-            int highlightEndOffset,
             AnchorMatch anchorMatch
     ) {
     }
@@ -101,11 +98,8 @@ public final class CallFlowNavigator implements Disposable {
                 - document.getLineStartOffset(resolvedLine - 1)
                 + 1;
         return new NavigationResult(
-                absolutePath,
                 resolvedLine,
                 resolvedColumn,
-                resolved.startOffset(),
-                resolved.endOffset(),
                 resolved.anchorMatch()
         );
     }

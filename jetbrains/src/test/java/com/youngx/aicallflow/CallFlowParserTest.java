@@ -20,7 +20,6 @@ final class CallFlowParserTest {
 
         assertEquals("1.0", flow.version());
         assertEquals("Login flow", flow.title());
-        assertEquals("4c9f12a", flow.project().revision());
         assertEquals("n1", flow.entry());
         assertEquals(2, flow.nodes().size());
         assertEquals(NodeKind.ENTRY, flow.nodes().get(0).kind());
@@ -45,9 +44,8 @@ final class CallFlowParserTest {
     }
 
     @Test
-    void acceptsOptionalProjectRangeMetadataAndEdgeLabel() {
+    void acceptsOptionalRangeMetadataAndEdgeLabel() {
         String json = validJson()
-                .replace("\"project\":{\"revision\":\"4c9f12a\"},", "")
                 .replace(",\"endLine\":42,\"endColumn\":38", "")
                 .replace(",\"symbol\":\"LoginViewModel.login\"", "")
                 .replace(",\"anchorText\":\"repository.login(account)\"", "")
@@ -55,7 +53,6 @@ final class CallFlowParserTest {
 
         CallFlow flow = CallFlowParser.parse(json);
 
-        assertNull(flow.project());
         assertNull(flow.nodes().get(0).location().endLine());
         assertNull(flow.nodes().get(0).location().endColumn());
         assertNull(flow.nodes().get(0).location().symbol());
@@ -109,6 +106,7 @@ final class CallFlowParserTest {
         assertInvalid("request body is required", null);
         assertInvalid("request body is required", "   ");
         assertInvalid("malformed JSON", "{");
+        assertInvalid("malformed JSON", "{\"value\":[]]}");
         assertInvalid("version must be \"1.0\"", validJson().replace("\"version\":\"1.0\"", "\"version\":\"2.0\""));
         assertInvalid("malformed JSON", validJson() + " {}");
     }
@@ -116,12 +114,15 @@ final class CallFlowParserTest {
     @Test
     void rejectsMissingAndBlankRequiredValues() {
         assertInvalid("title is required", validJson().replace("\"title\":\"Login flow\"", "\"title\":\" \""));
-        assertInvalid("project.revision is required", validJson().replace("\"revision\":\"4c9f12a\"", "\"revision\":\"\""));
         assertInvalid("nodes must not be empty", validJson().replace(nodesJson(), "[]"));
         assertInvalid("edges is required", validJson().replace(edgesJson(), "null"));
         assertInvalid("entry is required", validJson().replace("\"entry\":\"n1\"", "\"entry\":\"\""));
         assertInvalid("summary is required", validJson().replace("Starts login", " "));
         assertInvalid("location is required", validJson().replace(locationJson(), "null"));
+        assertInvalid(
+                "anchorText must stay on one source line",
+                validJson().replace("repository.login(account)", "repository.login\\n(account)")
+        );
     }
 
     @Test
@@ -137,6 +138,50 @@ final class CallFlowParserTest {
     }
 
     @Test
+    void rejectsFieldsOutsideTheCurrentSchema() {
+        assertInvalid(
+                "Call Flow.extra is not supported",
+                validJson().replace("\"title\":\"Login flow\"", "\"title\":\"Login flow\",\"extra\":true")
+        );
+        assertInvalid(
+                "nodes[0].extra is not supported",
+                validJson().replace("\"id\":\"n1\"", "\"id\":\"n1\",\"extra\":true")
+        );
+        assertInvalid(
+                "nodes[0].location.offset is not supported",
+                validJson().replace("\"line\":42", "\"line\":42,\"offset\":0")
+        );
+        assertInvalid(
+                "edges[0].target is not supported",
+                validJson().replace("\"to\":\"n2\"", "\"to\":\"n2\",\"target\":\"n2\"")
+        );
+    }
+
+    @Test
+    void rejectsDuplicateFieldsAtEverySchemaLevel() {
+        assertInvalid(
+                "duplicate JSON field: entry",
+                validJson().replace("\"entry\":\"n1\"", "\"entry\":\"n2\",\"entry\":\"n1\"")
+        );
+        assertInvalid(
+                "duplicate JSON field: path",
+                validJson().replace(
+                        "\"path\":\"app/src/main/java/com/example/LoginViewModel.kt\"",
+                        "\"path\":\"app/Other.kt\",\"path\":\"app/src/main/java/com/example/LoginViewModel.kt\""
+                )
+        );
+    }
+
+    @Test
+    void rejectsExcessiveJsonNestingWithoutOverflowingTheStack() {
+        String json = "[".repeat(StrictJsonTreeParser.MAX_NESTING_DEPTH + 1)
+                + "0"
+                + "]".repeat(StrictJsonTreeParser.MAX_NESTING_DEPTH + 1);
+
+        assertInvalid("JSON nesting exceeds", json);
+    }
+
+    @Test
     void rejectsJsonTypeCoercion() {
         assertInvalid("malformed JSON", validJson().replace("\"version\":\"1.0\"", "\"version\":1.0"));
         assertInvalid("malformed JSON", validJson().replace("\"title\":\"Login flow\"", "\"title\":123"));
@@ -144,6 +189,10 @@ final class CallFlowParserTest {
         assertInvalid("malformed JSON", validJson().replace("\"kind\":\"entry\"", "\"kind\":1"));
         assertInvalid("malformed JSON", validJson().replace("\"line\":42", "\"line\":\"42\""));
         assertInvalid("malformed JSON", validJson().replace("\"line\":42", "\"line\":null"));
+        assertInvalid("malformed JSON", validJson().replace("\"line\":42", "\"line\":1.5"));
+        assertInvalid("malformed JSON", validJson().replace("\"line\":42", "\"line\":1.0"));
+        assertInvalid("malformed JSON", validJson().replace("\"line\":42", "\"line\":1e0"));
+        assertInvalid("malformed JSON", validJson().replace("\"line\":42", "\"line\":4294967297"));
     }
 
     @Test
@@ -218,7 +267,6 @@ final class CallFlowParserTest {
         CallFlow tooManyNodes = new CallFlow(
                 "1.0",
                 "Flow",
-                null,
                 Collections.nCopies(CallFlowValidation.MAX_NODES + 1, null),
                 List.of(new CallFlowEdge("n1", "n1", EdgeKind.NEXT, null)),
                 "n1"
@@ -232,7 +280,6 @@ final class CallFlowParserTest {
         CallFlow tooManyEdges = new CallFlow(
                 "1.0",
                 "Flow",
-                null,
                 List.of(new CallFlowNode(
                         "n1",
                         NodeKind.ENTRY,
@@ -272,7 +319,6 @@ final class CallFlowParserTest {
                 {
                   "version":"1.0",
                   "title":"Login flow",
-                  "project":{"revision":"4c9f12a"},
                   "nodes":%s,
                   "edges":%s,
                   "entry":"n1"

@@ -1,7 +1,9 @@
 .DS_Store
 __pycache__/
+.pytest_cache/
 *.py[cod]
 jetbrains/.gradle/
 jetbrains/.intellijPlatform/
 jetbrains/.kotlin/
 jetbrains/build/
+jetbrains/verification-*/

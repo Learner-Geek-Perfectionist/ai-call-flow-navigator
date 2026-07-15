@@ -15,7 +15,7 @@ final class CallFlowDeliveryParserTest {
     void parsesDeliveryMetadataAndCallFlowFromTheSameDocument() {
         String json = validJson();
 
-        CallFlowDeliveryParser.Request request = CallFlowDeliveryParser.parse(json);
+        CallFlowDeliveryParser.Request request = parseRequest(json);
 
         assertEquals(CallFlowDeliveryParser.DELIVERY_VERSION, request.delivery().version());
         assertEquals("request_ABC-123", request.delivery().requestId());
@@ -29,16 +29,6 @@ final class CallFlowDeliveryParserTest {
     }
 
     @Test
-    void rejectsProjectRootBecauseThePluginSuppliesItsRegisteredProject() {
-        String json = validJson().replace(
-                "\"createdAtEpochMs\"",
-                "\"projectRoot\":\"/workspace/sample\",\"createdAtEpochMs\""
-        );
-
-        assertInvalid("projectRoot", json);
-    }
-
-    @Test
     void rejectsEveryUnknownDeliveryField() {
         String json = validJson().replace(
                 "\"createdAtEpochMs\"",
@@ -49,13 +39,14 @@ final class CallFlowDeliveryParserTest {
     }
 
     @Test
-    void parsesDeliveryWithoutRequiringTheCallFlowToBeValid() {
-        String json = validJson().replace("\"entry\":\"entry\"", "\"entry\":\"missing\"");
-
-        CallFlowDeliveryParser.Delivery delivery = CallFlowDeliveryParser.parseDelivery(json);
-
-        assertEquals("request_ABC-123", delivery.requestId());
-        assertThrows(IllegalArgumentException.class, () -> CallFlowDeliveryParser.parse(json));
+    void rejectsDuplicateDeliveryFields() {
+        assertInvalid(
+                "duplicate JSON field: requestId",
+                validJson().replace(
+                        "\"requestId\":\"request_ABC-123\"",
+                        "\"requestId\":\"other-request\",\"requestId\":\"request_ABC-123\""
+                )
+        );
     }
 
     @Test
@@ -78,6 +69,12 @@ final class CallFlowDeliveryParserTest {
         assertInvalid("timestamps must not be negative", validJson().replace("1700000000000", "-1"));
         assertInvalid("expiresAtEpochMs must be after", validJson().replace("1700000060000", "1700000000000"));
         assertInvalid("createdAtEpochMs must be a 64-bit integer", validJson().replace("1700000000000", "1.5"));
+        assertInvalid("createdAtEpochMs must be a 64-bit integer", validJson().replace("1700000000000", "1.0"));
+        assertInvalid("createdAtEpochMs must be a 64-bit integer", validJson().replace("1700000000000", "1e3"));
+        assertInvalid(
+                "createdAtEpochMs must be a 64-bit integer",
+                validJson().replace("1700000000000", "9223372036854775808")
+        );
     }
 
     @Test
@@ -117,11 +114,17 @@ final class CallFlowDeliveryParserTest {
     private static void assertInvalid(String expectedMessagePart, String json) {
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
-                () -> CallFlowDeliveryParser.parse(json)
+                () -> parseRequest(json)
         );
         assertTrue(
                 error.getMessage().contains(expectedMessagePart),
                 () -> "Expected error containing <" + expectedMessagePart + "> but was <" + error.getMessage() + ">"
+        );
+    }
+
+    private static CallFlowDeliveryParser.Request parseRequest(String json) {
+        return CallFlowDeliveryParser.parseCallFlow(
+                CallFlowDeliveryParser.parseEnvelope(json)
         );
     }
 

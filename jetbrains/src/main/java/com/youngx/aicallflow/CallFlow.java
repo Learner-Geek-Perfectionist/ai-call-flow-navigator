@@ -10,7 +10,6 @@ import java.util.List;
 public record CallFlow(
         String version,
         String title,
-        CallFlowProject project,
         List<CallFlowNode> nodes,
         List<CallFlowEdge> edges,
         String entry

@@ -50,16 +50,7 @@ public final class CallFlowSessionService implements Disposable {
         return project.getService(CallFlowSessionService.class);
     }
 
-    /** May be called from a file inbox worker; loading and navigation are performed on EDT. */
-    public void load(@NotNull CallFlow flow) {
-        loadAsync(flow, () -> true);
-    }
-
-    /** Loads only if the originating file inbox registration is still current on the EDT. */
-    void load(@NotNull CallFlow flow, @NotNull BooleanSupplier shouldLoad) {
-        loadAsync(flow, shouldLoad);
-    }
-
+    /** Loads on EDT only while the originating file inbox registration is current. */
     CompletionStage<Void> loadAsync(
             @NotNull CallFlow flow,
             @NotNull BooleanSupplier shouldLoad

@@ -56,7 +56,7 @@ Skill 采用仅显式触发模式，只有主动输入命令时才运行：
 
 ## 零配置 Call Flow
 
-这里的“零配置”指无需配置端口、Token 或 `projectRoot`；Skill 仍由上面的命令显式启动。
+插件自动绑定 Android Studio 当前打开的项目，并使用当前操作系统的本地临时目录交换 Call Flow。Skill 由上面的命令显式启动。
 
 正常使用只有三步：
 
@@ -144,7 +144,7 @@ cd jetbrains
 产物位置：
 
 ```text
-jetbrains/build/distributions/youngx-ai-call-flow-navigator-0.6.3.zip
+jetbrains/build/distributions/youngx-ai-call-flow-navigator-<version>.zip
 ```
 
 ## 许可证

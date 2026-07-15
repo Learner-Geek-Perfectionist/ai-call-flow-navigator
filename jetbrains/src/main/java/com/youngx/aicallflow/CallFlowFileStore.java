@@ -5,8 +5,6 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.attribute.UserPrincipal;
-import java.security.SecureRandom;
-import java.util.Base64;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
@@ -16,8 +14,6 @@ final class CallFlowFileStore implements AutoCloseable {
 
     private static final String TEMPORARY_ROOT = "youngx-ai-call-flow-navigator-archive";
     private static final String CALL_FLOWS_DIRECTORY = "call-flows";
-    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
-
     private final Path callFlowDirectory;
     private final UserPrincipal expectedOwner;
     private boolean closed;
@@ -74,7 +70,7 @@ final class CallFlowFileStore implements AutoCloseable {
                 "call-flow-"
                         + System.currentTimeMillis()
                         + "-"
-                        + randomUrlSafeString(12)
+                        + SecureFileSupport.randomUrlSafeString(12)
                         + ".json"
         );
         SecureFileSupport.writeAtomically(target, sourceJson, expectedOwner);
@@ -116,11 +112,5 @@ final class CallFlowFileStore implements AutoCloseable {
         } catch (IOException | SecurityException ignored) {
             // Storage succeeded; cleanup must not turn an accepted request into a failure.
         }
-    }
-
-    private static String randomUrlSafeString(int byteCount) {
-        byte[] bytes = new byte[byteCount];
-        SECURE_RANDOM.nextBytes(bytes);
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 }

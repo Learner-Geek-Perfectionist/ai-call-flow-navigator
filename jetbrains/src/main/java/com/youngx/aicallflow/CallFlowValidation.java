@@ -13,7 +13,6 @@ final class CallFlowValidation {
     private static final int MAX_TITLE_LENGTH = 512;
     private static final int MAX_LABEL_LENGTH = 512;
     private static final int MAX_SYMBOL_LENGTH = 512;
-    private static final int MAX_REVISION_LENGTH = 4_096;
     private static final int MAX_PATH_LENGTH = 4_096;
     private static final int MAX_SUMMARY_LENGTH = 16_384;
     private static final int MAX_ANCHOR_TEXT_LENGTH = 16_384;
@@ -32,10 +31,6 @@ final class CallFlowValidation {
             throw invalid("version must be \"" + CallFlow.SUPPORTED_VERSION + "\"");
         }
         requireText(flow.title(), "title", MAX_TITLE_LENGTH);
-        if (flow.project() != null) {
-            requireText(flow.project().revision(), "project.revision", MAX_REVISION_LENGTH);
-        }
-
         List<CallFlowNode> nodes = requireNonEmptyList(flow.nodes(), "nodes", MAX_NODES);
         List<CallFlowEdge> edges = requireList(flow.edges(), "edges", MAX_EDGES);
         requireIdentifier(flow.entry(), "entry");
@@ -106,7 +101,11 @@ final class CallFlowValidation {
         }
 
         requireOptionalText(location.symbol(), name + ".symbol", MAX_SYMBOL_LENGTH);
-        requireOptionalText(location.anchorText(), name + ".anchorText", MAX_ANCHOR_TEXT_LENGTH);
+        String anchorText = location.anchorText();
+        requireOptionalText(anchorText, name + ".anchorText", MAX_ANCHOR_TEXT_LENGTH);
+        if (anchorText != null && (anchorText.indexOf('\n') >= 0 || anchorText.indexOf('\r') >= 0)) {
+            throw invalid(name + ".anchorText must stay on one source line");
+        }
     }
 
     private static void validateRelativePath(String path, String name) {

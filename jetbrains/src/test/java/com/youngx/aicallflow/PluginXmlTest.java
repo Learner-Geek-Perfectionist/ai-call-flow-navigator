@@ -1,36 +1,58 @@
 package com.youngx.aicallflow;
 
 import org.junit.jupiter.api.Test;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 
-import java.nio.file.Files;
+import javax.xml.parsers.DocumentBuilderFactory;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 final class PluginXmlTest {
     @Test
-    void declaresZeroConfigurationAiCallFlowServices() throws Exception {
-        String xml = Files.readString(Path.of("src/main/resources/META-INF/plugin.xml"));
+    void declaresOnlyTheCurrentCallFlowComponents() throws Exception {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        Document document = factory.newDocumentBuilder().parse(
+                Path.of("src/main/resources/META-INF/plugin.xml").toFile()
+        );
 
-        assertTrue(xml.contains("<id>com.youngx.aicallflow</id>"));
-        assertTrue(xml.contains("<name>AI Call Flow Navigator</name>"));
-        assertTrue(xml.contains(">YoungX</vendor>"));
-        assertTrue(xml.contains("<applicationService serviceImplementation=\"com.youngx.aicallflow.CallFlowFileInboxService\"/>"));
-        assertTrue(xml.contains("com.youngx.aicallflow.AiCallFlowProjectService"));
-        assertTrue(xml.contains("com.youngx.aicallflow.AiCallFlowStartupActivity"));
-        assertTrue(xml.contains("com.youngx.aicallflow.CallFlowSessionService"));
-        assertTrue(xml.contains("com.youngx.aicallflow.CallFlowToolWindowFactory"));
-        assertTrue(xml.contains("id=\"Call Flow\""));
-        assertFalse(xml.contains("AndroidStudioBridgeSettings"));
-        assertFalse(xml.contains("AndroidStudioBridgeConfigurable"));
-        assertFalse(xml.contains("projectConfigurable"));
-        assertFalse(xml.contains("asrclinks"));
-        assertFalse(xml.contains("Android Source Links"));
-        assertFalse(xml.contains("org.intellij.plugins.markdown"));
-        assertFalse(xml.contains("com.ouyang.asbridge"));
-        assertFalse(xml.contains("BridgeHttpServer"));
-        assertFalse(xml.contains("BridgeRuntimeConfig"));
-        assertFalse(xml.contains("BridgeDiscovery"));
+        assertEquals("com.youngx.aicallflow", text(document, "id"));
+        assertEquals("AI Call Flow Navigator", text(document, "name"));
+        assertEquals("YoungX", text(document, "vendor"));
+
+        Element extensions = (Element) document.getElementsByTagName("extensions").item(0);
+        List<String> registrations = new ArrayList<>();
+        for (Node child = extensions.getFirstChild(); child != null; child = child.getNextSibling()) {
+            if (!(child instanceof Element extension)) {
+                continue;
+            }
+            registrations.add(switch (extension.getTagName()) {
+                case "applicationService", "projectService" -> extension.getTagName()
+                        + ":" + extension.getAttribute("serviceImplementation");
+                case "postStartupActivity" -> extension.getTagName()
+                        + ":" + extension.getAttribute("implementation");
+                case "toolWindow" -> extension.getTagName()
+                        + ":" + extension.getAttribute("id")
+                        + ":" + extension.getAttribute("factoryClass");
+                default -> extension.getTagName();
+            });
+        }
+
+        assertEquals(List.of(
+                "applicationService:com.youngx.aicallflow.CallFlowFileInboxService",
+                "projectService:com.youngx.aicallflow.AiCallFlowProjectService",
+                "projectService:com.youngx.aicallflow.CallFlowSessionService",
+                "postStartupActivity:com.youngx.aicallflow.AiCallFlowStartupActivity",
+                "toolWindow:Call Flow:com.youngx.aicallflow.CallFlowToolWindowFactory"
+        ), registrations);
+    }
+
+    private static String text(Document document, String tagName) {
+        return document.getElementsByTagName(tagName).item(0).getTextContent().trim();
     }
 }

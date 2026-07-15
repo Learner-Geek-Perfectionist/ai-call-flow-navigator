@@ -61,14 +61,6 @@ public final class AiCallFlowProjectService implements Disposable {
         setStatus("AI Call Flow Navigator: waiting for a local Call Flow JSON file");
     }
 
-    public synchronized void restart() {
-        start();
-    }
-
-    public synchronized boolean isRunning() {
-        return registration != null && fileStore != null;
-    }
-
     public String connectionStatus() {
         return connectionStatus;
     }

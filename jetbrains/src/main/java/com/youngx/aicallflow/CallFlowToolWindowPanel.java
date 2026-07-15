@@ -23,7 +23,6 @@ import javax.swing.JPanel;
 import javax.swing.JSplitPane;
 import javax.swing.ListSelectionModel;
 import java.awt.BorderLayout;
-import java.awt.Component;
 import java.awt.FlowLayout;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -126,9 +125,8 @@ public final class CallFlowToolWindowPanel extends JPanel
                     return;
                 }
                 int index = nodeList.locationToIndex(event.getPoint());
-                if (index >= 0
-                        && nodeList.getCellBounds(index, index) != null
-                        && nodeList.getCellBounds(index, index).contains(event.getPoint())) {
+                var bounds = index < 0 ? null : nodeList.getCellBounds(index, index);
+                if (bounds != null && bounds.contains(event.getPoint())) {
                     session.jumpTo(nodeModel.get(index).id());
                 }
             }

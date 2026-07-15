@@ -10,9 +10,6 @@ Each object uses exactly the fields listed below; strict validation keeps the re
 {
   "version": "1.0",
   "title": "MainActivity.onCreate startup flow",
-  "project": {
-    "revision": "optional Git revision"
-  },
   "nodes": [
     {
       "id": "activity-on-create",
@@ -33,8 +30,6 @@ Each object uses exactly the fields listed below; strict validation keeps the re
   "entry": "activity-on-create"
 }
 ```
-
-`project` is optional descriptive revision metadata containing one non-empty `revision`.
 
 ## Nodes
 
@@ -93,7 +88,7 @@ Model error conditions with a `branch` node plus a labeled branch edge, and use 
 - Nodes: 1 to 10,000.
 - Edges: 0 to 50,000.
 - Summary and `anchorText`: at most 16,384 UTF-16 code units each.
-- Path and optional revision: at most 4,096 UTF-16 code units each.
+- Path: at most 4,096 UTF-16 code units.
 - Optional symbol: at most 512 UTF-16 code units.
 
 All required and optional string values are non-blank when present. The top-level `entry` references an existing node.

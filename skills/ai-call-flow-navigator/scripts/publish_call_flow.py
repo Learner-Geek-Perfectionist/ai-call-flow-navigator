@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Validate and atomically deliver a semantic Call Flow to Android Studio."""
 
-from __future__ import print_function
-
 import argparse
 import json
+import math
 import os
 import re
 import stat
@@ -109,6 +108,10 @@ def _parse_json_bytes(data, label, maximum=None):
         )
     except PublisherError:
         raise
+    except RecursionError as error:
+        raise PublisherError(
+            "%s is not valid JSON: nesting is too deep" % label
+        ) from error
     except (TypeError, ValueError) as error:
         raise PublisherError("%s is not valid JSON: %s" % (label, error))
 
@@ -229,16 +232,10 @@ def _validate_call_flow(value):
         flow,
         "Call Flow",
         ("version", "title", "nodes", "edges", "entry"),
-        ("project",),
     )
     if flow["version"] != CALL_FLOW_VERSION:
         raise PublisherError('Call Flow.version must be "%s"' % CALL_FLOW_VERSION)
     _text(flow["title"], "Call Flow.title", 512)
-
-    if "project" in flow:
-        project = _expect_object(flow["project"], "Call Flow.project")
-        _expect_exact_fields(project, "Call Flow.project", ("revision",))
-        _text(project["revision"], "Call Flow.project.revision", 4096)
 
     nodes = flow["nodes"]
     if not isinstance(nodes, list) or not nodes:
@@ -404,7 +401,35 @@ def _existing_private_file(path, label):
     _verify_owner(info, label)
     if _current_uid() is not None and info.st_mode & 0o077:
         raise PublisherError("%s permissions are not private" % label)
-    return path
+    return info
+
+
+def _read_private_file(path, label, initial, maximum=None):
+    flags = os.O_RDONLY
+    if hasattr(os, "O_BINARY"):
+        flags |= os.O_BINARY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+
+    descriptor = None
+    try:
+        descriptor = os.open(str(path), flags)
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode):
+            raise PublisherError("%s is not a regular file" % label)
+        _verify_owner(opened, label)
+        if _current_uid() is not None and opened.st_mode & 0o077:
+            raise PublisherError("%s permissions are not private" % label)
+        if (opened.st_dev, opened.st_ino) != (initial.st_dev, initial.st_ino):
+            raise PublisherError("%s changed before it could be read" % label)
+        with os.fdopen(descriptor, "rb") as input_file:
+            descriptor = None
+            return input_file.read() if maximum is None else input_file.read(maximum + 1)
+    except OSError as error:
+        raise PublisherError("cannot securely read %s: %s" % (label, error))
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
 
 
 def _is_within(path, root):
@@ -461,7 +486,7 @@ def _temporary_root_candidates(explicit=None):
     return resolved
 
 
-def _read_input(path, delete_input):
+def _read_input(path, delete_input, temp_root_argument=None):
     if not delete_input:
         try:
             with path.open("rb") as input_file:
@@ -473,8 +498,7 @@ def _read_input(path, delete_input):
         raise PublisherError("--delete-input requires an absolute secure temporary-file path")
 
     label = "temporary Call Flow JSON"
-    _existing_private_file(path, label)
-    initial = _lstat(path, label)
+    initial = _existing_private_file(path, label)
     if initial.st_nlink != 1:
         raise PublisherError("temporary Call Flow JSON must not have hard links")
     try:
@@ -483,35 +507,16 @@ def _read_input(path, delete_input):
     except OSError as error:
         raise PublisherError("cannot resolve the temporary Call Flow JSON: %s" % error)
     temporary_roots = _temporary_root_candidates()
+    if temp_root_argument:
+        for root in _temporary_root_candidates(temp_root_argument):
+            if root not in temporary_roots:
+                temporary_roots.append(root)
     if not any(_is_within(real_input, root) for root in temporary_roots):
         raise PublisherError("--delete-input only deletes files inside a recognized system temporary directory")
     if _is_within(real_input, real_source):
         raise PublisherError("--delete-input refuses to delete a file inside the source project")
 
-    flags = os.O_RDONLY
-    if hasattr(os, "O_BINARY"):
-        flags |= os.O_BINARY
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    descriptor = None
-    try:
-        descriptor = os.open(str(path), flags)
-        opened = os.fstat(descriptor)
-        if not stat.S_ISREG(opened.st_mode):
-            raise PublisherError("temporary Call Flow JSON is not a regular file")
-        _verify_owner(opened, label)
-        if _current_uid() is not None and opened.st_mode & 0o077:
-            raise PublisherError("temporary Call Flow JSON permissions are not private")
-        if (opened.st_dev, opened.st_ino) != (initial.st_dev, initial.st_ino):
-            raise PublisherError("temporary Call Flow JSON changed before it could be read")
-        with os.fdopen(descriptor, "rb") as input_file:
-            descriptor = None
-            data = input_file.read()
-    except OSError as error:
-        raise PublisherError("cannot securely read Call Flow JSON: %s" % error)
-    finally:
-        if descriptor is not None:
-            os.close(descriptor)
+    data = _read_private_file(path, label, initial)
 
     current = _lstat(path, label)
     if (current.st_dev, current.st_ino) != (initial.st_dev, initial.st_ino):
@@ -604,14 +609,9 @@ def _publish_request(inbox, request_id, payload):
             output.write(payload)
             output.flush()
             os.fsync(output.fileno())
-        if os.name != "nt":
-            os.chmod(str(temporary), 0o600, follow_symlinks=False)
 
         try:
-            try:
-                os.link(str(temporary), str(final), follow_symlinks=False)
-            except TypeError:
-                os.link(str(temporary), str(final))
+            os.link(str(temporary), str(final), follow_symlinks=False)
         except FileExistsError as error:
             raise PublisherError("request destination already exists; refusing to overwrite it") from error
         except OSError as error:
@@ -643,11 +643,9 @@ def _publish_request(inbox, request_id, payload):
 
 
 def _read_receipt(path, request_id):
-    _existing_private_file(path, "AI Call Flow receipt")
-    try:
-        data = path.read_bytes()
-    except OSError as error:
-        raise PublisherError("cannot read plugin receipt: %s" % error)
+    label = "AI Call Flow receipt"
+    initial = _existing_private_file(path, label)
+    data = _read_private_file(path, label, initial, MAX_RECEIPT_BYTES)
     receipt = _expect_object(_parse_json_bytes(data, "plugin receipt", MAX_RECEIPT_BYTES), "plugin receipt")
     if receipt.get("version") != DELIVERY_VERSION:
         raise PublisherError("plugin receipt has an unsupported version")
@@ -759,13 +757,13 @@ def _wait_for_receipt(receipts, final_request, request_id, timeout, keep_receipt
 
 def main(argv=None):
     args = _parser().parse_args(argv)
-    if args.timeout <= 0 or args.timeout > 300:
+    if not math.isfinite(args.timeout) or args.timeout <= 0 or args.timeout > 300:
         raise PublisherError("--timeout must be greater than 0 and at most 300 seconds")
     if args.expires_in < 10 or args.expires_in > 300:
         raise PublisherError("--expires-in must be between 10 and 300 seconds")
 
     input_path = Path(args.flow_json).expanduser()
-    input_data = _read_input(input_path, args.delete_input)
+    input_data = _read_input(input_path, args.delete_input, args.temp_root)
     flow = _validate_call_flow(_parse_json_bytes(input_data, "Call Flow JSON"))
     _validate_sources(flow, Path.cwd())
 

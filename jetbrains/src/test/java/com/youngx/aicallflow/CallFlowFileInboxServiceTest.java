@@ -15,6 +15,7 @@ import java.nio.file.attribute.FileTime;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -69,10 +70,19 @@ final class CallFlowFileInboxServiceTest {
             awaitRegularFile(receiptPath(service, requestId));
 
             JsonObject receipt = readReceipt(service, requestId);
+            assertEquals(Set.of(
+                    "version",
+                    "requestId",
+                    "status",
+                    "completedAtEpochMs",
+                    "callFlowFile",
+                    "nodeCount",
+                    "edgeCount",
+                    "entry"
+            ), receipt.keySet());
             assertEquals("2.0", receipt.get("version").getAsString());
             assertEquals(requestId, receipt.get("requestId").getAsString());
             assertEquals("accepted", receipt.get("status").getAsString());
-            assertFalse(receipt.has("projectRoot"));
             assertEquals(NOW, receipt.get("completedAtEpochMs").getAsLong());
             assertEquals(stored.toAbsolutePath().normalize().toString(), receipt.get("callFlowFile").getAsString());
             assertEquals(2, receipt.get("nodeCount").getAsInt());
@@ -82,36 +92,6 @@ final class CallFlowFileInboxServiceTest {
             assertEquals(sourceJson, receivedJson.get());
             assertEquals(sourceJson, Files.readString(stored));
             assertFalse(Files.exists(finalRequest));
-            assertProcessingEmpty(service);
-        } finally {
-            service.dispose();
-        }
-    }
-
-    @Test
-    void registeredReceiverDirectlyHandlesARequestWithoutProjectMetadata() throws Exception {
-        Path configuredTempRoot = Files.createDirectory(temporaryDirectory.resolve("system-temp"));
-        Path stored = temporaryDirectory.resolve("call-flow.json");
-        AtomicInteger receiveCount = new AtomicInteger();
-        AtomicReference<String> receivedJson = new AtomicReference<>();
-        CallFlowFileInboxService service = new CallFlowFileInboxService(FIXED_CLOCK, configuredTempRoot);
-
-        try (CallFlowFileInboxService.Registration ignored = service.register(
-                persistingReceiver(stored, receiveCount, receivedJson)
-        )) {
-            String requestId = "single-receiver";
-            String sourceJson = requestJson(requestId, NOW - 1_000L, NOW + 60_000L);
-            publish(service, requestId, sourceJson);
-
-            service.scanOnce();
-            awaitRegularFile(receiptPath(service, requestId));
-
-            JsonObject receipt = readReceipt(service, requestId);
-            assertEquals("accepted", receipt.get("status").getAsString());
-            assertFalse(receipt.has("projectRoot"));
-            assertEquals(1, receiveCount.get());
-            assertEquals(sourceJson, receivedJson.get());
-            assertEquals(sourceJson, Files.readString(stored));
             assertProcessingEmpty(service);
         } finally {
             service.dispose();
@@ -195,15 +175,54 @@ final class CallFlowFileInboxServiceTest {
             service.scanOnce();
             assertRejected(service, "invalid-json", "INVALID_DELIVERY");
 
+            String invalidFlowId = "invalid-flow";
+            publish(
+                    service,
+                    invalidFlowId,
+                    invalidCallFlow(requestJson(
+                            invalidFlowId,
+                            NOW - 1_000L,
+                            NOW + 60_000L
+                    ))
+            );
+            service.scanOnce();
+            assertRejected(service, invalidFlowId, "INVALID_CALL_FLOW");
+
             String expiredId = "expired-1";
             publish(service, expiredId, requestJson(expiredId, NOW - 2_000L, NOW - 1_000L));
             service.scanOnce();
             assertRejected(service, expiredId, "REQUEST_EXPIRED");
 
+            String expiredInvalidId = "expired-invalid";
+            publish(
+                    service,
+                    expiredInvalidId,
+                    invalidCallFlow(requestJson(
+                            expiredInvalidId,
+                            NOW - 2_000L,
+                            NOW - 1_000L
+                    ))
+            );
+            service.scanOnce();
+            assertRejected(service, expiredInvalidId, "REQUEST_EXPIRED");
+
             String fileId = "filename-id";
             publish(service, fileId, requestJson("document-id", NOW - 1_000L, NOW + 60_000L));
             service.scanOnce();
             assertRejected(service, fileId, "REQUEST_ID_MISMATCH");
+
+            String invalidFileId = "filename-invalid";
+            publish(
+                    service,
+                    invalidFileId,
+                    invalidCallFlow(requestJson(
+                            "document-invalid",
+                            NOW - 1_000L,
+                            NOW + 60_000L
+                    ))
+            );
+            service.scanOnce();
+            assertRejected(service, invalidFileId, "REQUEST_ID_MISMATCH");
 
             assertProcessingEmpty(service);
         } finally {
@@ -476,5 +495,9 @@ final class CallFlowFileInboxServiceTest {
                 createdAtEpochMs,
                 expiresAtEpochMs
         );
+    }
+
+    private static String invalidCallFlow(String requestJson) {
+        return requestJson.replace("\"entry\":\"entry\"", "\"entry\":\"missing\"");
     }
 }

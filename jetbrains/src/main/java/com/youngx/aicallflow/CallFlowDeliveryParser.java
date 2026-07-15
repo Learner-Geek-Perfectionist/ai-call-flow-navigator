@@ -3,14 +3,9 @@ package com.youngx.aicallflow;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
-import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
-import com.google.gson.Strictness;
-import com.google.gson.stream.JsonReader;
-import com.google.gson.stream.JsonToken;
 
 import java.io.IOException;
-import java.io.StringReader;
 import java.nio.file.Path;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -36,24 +31,28 @@ final class CallFlowDeliveryParser {
     record Request(Delivery delivery, CallFlow callFlow, String sourceJson) {
     }
 
+    record Envelope(Delivery delivery, JsonObject root, String sourceJson) {
+    }
+
     private CallFlowDeliveryParser() {
     }
 
-    static Request parse(String sourceJson) {
+    static Envelope parseEnvelope(String sourceJson) {
         if (sourceJson == null || sourceJson.isBlank()) {
             throw invalid("request JSON is required", null);
         }
 
         JsonObject root = parseRootObject(sourceJson);
         Delivery delivery = parseDelivery(root);
-        return new Request(delivery, CallFlowParser.parse(sourceJson), sourceJson);
+        return new Envelope(delivery, root, sourceJson);
     }
 
-    static Delivery parseDelivery(String sourceJson) {
-        if (sourceJson == null || sourceJson.isBlank()) {
-            throw invalid("request JSON is required", null);
-        }
-        return parseDelivery(parseRootObject(sourceJson));
+    static Request parseCallFlow(Envelope envelope) {
+        return new Request(
+                envelope.delivery(),
+                CallFlowParser.parse(envelope.root()),
+                envelope.sourceJson()
+        );
     }
 
     private static Delivery parseDelivery(JsonObject root) {
@@ -116,16 +115,13 @@ final class CallFlowDeliveryParser {
 
     private static JsonObject parseRootObject(String sourceJson) {
         try {
-            JsonReader reader = new JsonReader(new StringReader(sourceJson));
-            reader.setStrictness(Strictness.STRICT);
-            JsonElement element = JsonParser.parseReader(reader);
-            if (reader.peek() != JsonToken.END_DOCUMENT) {
-                throw invalid("trailing content is not allowed", null);
-            }
+            JsonElement element = StrictJsonTreeParser.parse(sourceJson);
             if (!element.isJsonObject()) {
                 throw invalid("root must be a JSON object", null);
             }
             return element.getAsJsonObject();
+        } catch (StrictJsonTreeParser.StructuralException error) {
+            throw invalid(error.getMessage(), error);
         } catch (JsonParseException | IOException error) {
             throw invalid("malformed JSON", error);
         }
@@ -160,16 +156,26 @@ final class CallFlowDeliveryParser {
             throw invalid("_delivery." + name + " must be an integer", null);
         }
         try {
-            return primitive.getAsBigDecimal().longValueExact();
-        } catch (ArithmeticException | NumberFormatException error) {
+            return StrictJsonNumbers.parseLong(primitive.getAsString());
+        } catch (NumberFormatException error) {
             throw invalid("_delivery." + name + " must be a 64-bit integer", error);
         }
     }
 
-    private static IllegalArgumentException invalid(String message, Throwable cause) {
+    private static InvalidDeliveryException invalid(String message, Throwable cause) {
         String fullMessage = "Invalid file delivery: " + message;
         return cause == null
-                ? new IllegalArgumentException(fullMessage)
-                : new IllegalArgumentException(fullMessage, cause);
+                ? new InvalidDeliveryException(fullMessage)
+                : new InvalidDeliveryException(fullMessage, cause);
+    }
+
+    static final class InvalidDeliveryException extends IllegalArgumentException {
+        private InvalidDeliveryException(String message) {
+            super(message);
+        }
+
+        private InvalidDeliveryException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 }

@@ -2,19 +2,33 @@ package com.youngx.aicallflow;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonSyntaxException;
-import com.google.gson.Strictness;
 import com.google.gson.TypeAdapter;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonToken;
 import com.google.gson.stream.JsonWriter;
 
 import java.io.IOException;
-import java.io.StringReader;
 import java.util.Map;
+import java.util.Set;
 
-public final class CallFlowParser {
+final class CallFlowParser {
+    private static final Set<String> ROOT_FIELDS = Set.of(
+            "_delivery", "version", "title", "nodes", "edges", "entry"
+    );
+    private static final Set<String> NODE_FIELDS = Set.of(
+            "id", "kind", "location", "summary"
+    );
+    private static final Set<String> LOCATION_FIELDS = Set.of(
+            "path", "line", "column", "endLine", "endColumn", "symbol", "anchorText"
+    );
+    private static final Set<String> EDGE_FIELDS = Set.of(
+            "from", "to", "kind", "label"
+    );
     private static final TypeAdapter<String> STRICT_STRING = new TypeAdapter<String>() {
         @Override
         public void write(JsonWriter output, String value) throws IOException {
@@ -42,7 +56,7 @@ public final class CallFlowParser {
                 throw new JsonSyntaxException("Expected a JSON integer");
             }
             try {
-                return input.nextInt();
+                return StrictJsonNumbers.parseInt(input.nextString());
             } catch (NumberFormatException error) {
                 throw new JsonSyntaxException("Expected a 32-bit JSON integer", error);
             }
@@ -79,25 +93,87 @@ public final class CallFlowParser {
     private CallFlowParser() {
     }
 
-    public static CallFlow parse(String json) {
-        if (json == null) {
-            throw new IllegalArgumentException("Invalid call flow JSON: request body is required");
-        }
-        if (json.isBlank()) {
+    static CallFlow parse(String json) {
+        if (json == null || json.isBlank()) {
             throw new IllegalArgumentException("Invalid call flow JSON: request body is required");
         }
 
         try {
-            JsonReader reader = new JsonReader(new StringReader(json));
-            reader.setStrictness(Strictness.STRICT);
-            CallFlow flow = GSON.fromJson(reader, CallFlow.class);
-            if (reader.peek() != JsonToken.END_DOCUMENT) {
-                throw new IllegalArgumentException("Invalid call flow JSON: trailing content is not allowed");
+            JsonElement element = StrictJsonTreeParser.parse(json);
+            if (!element.isJsonObject()) {
+                throw new IllegalArgumentException("Invalid call flow JSON: root must be a JSON object");
             }
-            CallFlowValidation.validate(flow);
-            return flow;
+            return parse(element.getAsJsonObject());
+        } catch (StrictJsonTreeParser.StructuralException error) {
+            throw new IllegalArgumentException(
+                    "Invalid call flow JSON: " + error.getMessage(),
+                    error
+            );
         } catch (JsonParseException | IOException error) {
             throw new IllegalArgumentException("Invalid call flow JSON: malformed JSON", error);
+        }
+    }
+
+    static CallFlow parse(JsonObject root) {
+        validateFields(root);
+        CallFlow flow;
+        try {
+            flow = GSON.fromJson(root, CallFlow.class);
+        } catch (JsonParseException error) {
+            throw new IllegalArgumentException("Invalid call flow JSON: malformed JSON", error);
+        }
+        CallFlowValidation.validate(flow);
+        return flow;
+    }
+
+    private static void validateFields(JsonObject root) {
+        rejectUnknownFields(root, ROOT_FIELDS, "Call Flow");
+        validateObjectArray(root.get("nodes"), NODE_FIELDS, "nodes", true);
+        validateObjectArray(root.get("edges"), EDGE_FIELDS, "edges", false);
+    }
+
+    private static void validateObjectArray(
+            JsonElement element,
+            Set<String> fields,
+            String name,
+            boolean containsLocation
+    ) {
+        if (element == null || !element.isJsonArray()) {
+            return;
+        }
+        JsonArray values = element.getAsJsonArray();
+        for (int index = 0; index < values.size(); index++) {
+            JsonElement value = values.get(index);
+            if (!value.isJsonObject()) {
+                continue;
+            }
+            JsonObject object = value.getAsJsonObject();
+            String objectName = name + "[" + index + "]";
+            rejectUnknownFields(object, fields, objectName);
+            if (containsLocation) {
+                JsonElement location = object.get("location");
+                if (location != null && location.isJsonObject()) {
+                    rejectUnknownFields(
+                            location.getAsJsonObject(),
+                            LOCATION_FIELDS,
+                            objectName + ".location"
+                    );
+                }
+            }
+        }
+    }
+
+    private static void rejectUnknownFields(
+            JsonObject object,
+            Set<String> supportedFields,
+            String name
+    ) {
+        for (String field : object.keySet()) {
+            if (!supportedFields.contains(field)) {
+                throw new IllegalArgumentException(
+                        "Invalid call flow: " + name + "." + field + " is not supported"
+                );
+            }
         }
     }
 

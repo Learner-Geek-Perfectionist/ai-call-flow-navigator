@@ -7,7 +7,8 @@ import com.intellij.openapi.diagnostic.Logger;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.ByteBuffer;
+import java.io.InputStreamReader;
+import java.io.Reader;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
@@ -62,10 +63,6 @@ public final class CallFlowFileInboxService implements Disposable {
         this(Clock.systemUTC(), null);
     }
 
-    CallFlowFileInboxService(Clock clock) {
-        this(clock, null);
-    }
-
     CallFlowFileInboxService(Clock clock, Path temporaryRoot) {
         this.clock = Objects.requireNonNull(clock, "clock");
         this.configuredTemporaryRoot = temporaryRoot;
@@ -88,13 +85,6 @@ public final class CallFlowFileInboxService implements Disposable {
         }
         requestScan();
         return new Registration(this, target);
-    }
-
-    String statusText() {
-        Path inbox = inboxDirectory;
-        return inbox == null
-                ? "Preparing local JSON inbox"
-                : "File inbox ready · waiting for AI";
     }
 
     Path inboxDirectory() {
@@ -280,30 +270,6 @@ public final class CallFlowFileInboxService implements Disposable {
             return;
         }
 
-        String sourceJson;
-        CallFlowDeliveryParser.Delivery delivery;
-        try {
-            sourceJson = readUtf8Request(requestPath);
-            delivery = CallFlowDeliveryParser.parseDelivery(sourceJson);
-        } catch (IllegalArgumentException | IOException error) {
-            rejectClaimedRequest(requestPath, requestId, "INVALID_DELIVERY", safeMessage(error));
-            return;
-        }
-
-        if (!requestId.equals(delivery.requestId())) {
-            rejectClaimedRequest(
-                    requestPath,
-                    requestId,
-                    "REQUEST_ID_MISMATCH",
-                    "Request filename and _delivery.requestId do not match"
-            );
-            return;
-        }
-        if (clock.millis() > delivery.expiresAtEpochMs()) {
-            rejectClaimedRequest(requestPath, requestId, "REQUEST_EXPIRED", "Call Flow request expired");
-            return;
-        }
-
         List<RegisteredTarget> candidates = List.copyOf(targets);
         if (candidates.isEmpty()) {
             return;
@@ -338,17 +304,31 @@ public final class CallFlowFileInboxService implements Disposable {
             return;
         }
 
+        CallFlowDeliveryParser.Envelope envelope;
+        try {
+            envelope = CallFlowDeliveryParser.parseEnvelope(readUtf8Request(claimed));
+        } catch (CallFlowDeliveryParser.InvalidDeliveryException | IOException error) {
+            finishRejected(claimed, requestId, "INVALID_DELIVERY", safeMessage(error));
+            return;
+        }
+        if (!requestId.equals(envelope.delivery().requestId())) {
+            finishRejected(
+                    claimed,
+                    requestId,
+                    "REQUEST_ID_MISMATCH",
+                    "Request filename and _delivery.requestId do not match"
+            );
+            return;
+        }
+        if (clock.millis() > envelope.delivery().expiresAtEpochMs()) {
+            finishRejected(claimed, requestId, "REQUEST_EXPIRED", "Call Flow request expired");
+            return;
+        }
+
         CallFlowDeliveryParser.Request request;
         try {
-            String claimedJson = readUtf8Request(claimed);
-            request = CallFlowDeliveryParser.parse(claimedJson);
-            if (!requestId.equals(request.delivery().requestId())) {
-                throw new IllegalArgumentException("Request ID changed while claiming the file");
-            }
-            if (clock.millis() > request.delivery().expiresAtEpochMs()) {
-                throw new IllegalArgumentException("Call Flow request expired");
-            }
-        } catch (Exception error) {
+            request = CallFlowDeliveryParser.parseCallFlow(envelope);
+        } catch (IllegalArgumentException error) {
             finishRejected(claimed, requestId, "INVALID_CALL_FLOW", safeMessage(error));
             return;
         }
@@ -491,20 +471,23 @@ public final class CallFlowFileInboxService implements Disposable {
 
     private String readUtf8Request(Path path) throws IOException {
         SecureFileSupport.secureRegularFile(path, expectedOwner);
-        byte[] bytes;
         try (InputStream input = Files.newInputStream(
                 path,
                 StandardOpenOption.READ,
                 LinkOption.NOFOLLOW_LINKS
+        ); Reader reader = new InputStreamReader(
+                input,
+                StandardCharsets.UTF_8.newDecoder()
+                        .onMalformedInput(CodingErrorAction.REPORT)
+                        .onUnmappableCharacter(CodingErrorAction.REPORT)
         )) {
-            bytes = input.readAllBytes();
-        }
-        try {
-            return StandardCharsets.UTF_8.newDecoder()
-                    .onMalformedInput(CodingErrorAction.REPORT)
-                    .onUnmappableCharacter(CodingErrorAction.REPORT)
-                    .decode(ByteBuffer.wrap(bytes))
-                    .toString();
+            StringBuilder text = new StringBuilder();
+            char[] buffer = new char[8_192];
+            int count;
+            while ((count = reader.read(buffer)) != -1) {
+                text.append(buffer, 0, count);
+            }
+            return text.toString();
         } catch (CharacterCodingException error) {
             throw new IOException("Call Flow request must be valid UTF-8", error);
         }
