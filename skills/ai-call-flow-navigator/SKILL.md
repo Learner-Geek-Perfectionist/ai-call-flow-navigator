@@ -1,11 +1,13 @@
 ---
 name: ai-call-flow-navigator
-description: 从用户指定的入口符号分析本地源码仓库，将有意义的执行顺序、分支、回调和异步流程建模为精确到行列的 Call Flow，校验后投递到 Android Studio 当前项目中的 AI Call Flow Navigator 插件。当用户要求追踪、解释、可视化、逐步阅读或导航函数、方法、回调、协程、请求及其他代码执行路径时使用。
+description: 由用户通过 `$ai-call-flow-navigator`（Codex）或 `/ai-call-flow-navigator`（Claude Code）加主题参数显式调用；根据指定入口或主题分析本地源码仓库，将执行顺序、分支、回调和异步流程建模为精确到行列的 Call Flow，校验后投递到 Android Studio 当前项目中的 AI Call Flow Navigator 插件。
 ---
 
 # AI Call Flow Navigator
 
 将静态代码分析转换为 Android Studio 中类似 Debug 的源码导览。以终端与 Android Studio 共同打开的项目根目录为基准，并按照 Call Flow schema 生成语义字段。
+
+将用户在 Skill 命令后提供的 `<topic>` 作为入口符号、分析目标和可选范围；如果这些信息不足以唯一定位入口，再提出一个简短问题。
 
 ## 工作流程
 

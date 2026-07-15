@@ -6,12 +6,15 @@ Call Flow File Protocol 让本地 AI 把完整的源码阅读路径交给 Androi
 
 ## 用户流程
 
-正常用户只需安装插件、在 Android Studio 中打开项目，然后让同一台电脑上的 AI 分析并
-投递 Call Flow。插件自动绑定当前打开的项目。
+安装插件并在 Android Studio 中打开项目后，用户从同一项目根目录显式调用 Skill：
+
+- Codex：`$ai-call-flow-navigator <topic>`
+- Claude Code：`/ai-call-flow-navigator <topic>`
+
+Skill 按 `<topic>` 分析并投递 Call Flow，插件自动绑定当前打开的项目。
 
 仓库配套的 Claude/Codex Skill 负责让 AI 生成 Call Flow 内容；其中的
 `publish_call_flow.py` 负责校验源码行列、生成 `_delivery` 并执行下面的原子投递步骤。
-普通用户通过 Skill 完成整个过程。
 
 ## 系统临时交换目录
 

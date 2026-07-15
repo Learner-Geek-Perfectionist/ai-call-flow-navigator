@@ -17,9 +17,9 @@ GitHub 仓库：[Learner-Geek-Perfectionist/ai-call-flow-navigator](https://gith
 
 ## 配套 AI Skill
 
-仓库中的同一份 canonical `ai-call-flow-navigator` Skill 可以同时用于 Codex 和 Claude Code。
-macOS/Linux 运行 `./scripts/install-skill.sh`，Windows PowerShell 运行
-`./scripts/install-skill.ps1`；脚本会同时安装到：
+仓库中的同一套 canonical `ai-call-flow-navigator` Skill 内容可以同时用于 Codex 和 Claude
+Code。macOS/Linux 运行 `./scripts/install-skill.sh`，Windows PowerShell 运行
+`./scripts/install-skill.ps1`；脚本会写入各平台的显式调用元数据，并同时安装到：
 
 ```text
 ~/.agents/skills/ai-call-flow-navigator
@@ -27,18 +27,21 @@ macOS/Linux 运行 `./scripts/install-skill.sh`，Windows PowerShell 运行
 ```
 
 安装或更新 Skill 后先新开一个 AI 会话。在 Android Studio 实际打开的项目根目录启动 AI；
-monorepo 中 IDE 若只打开 `android/` 子目录，终端也必须进入该子目录。Codex 使用
-`$ai-call-flow-navigator 从 MainActivity.onCreate 开始分析调用链`，Claude Code 使用
-`/ai-call-flow-navigator 从 MainActivity.onCreate 开始分析调用链`。安装脚本和源码位于
+monorepo 中 IDE 若只打开 `android/` 子目录，终端也必须进入该子目录。Skill 仅由用户显式
+触发：Codex 使用 `$ai-call-flow-navigator <topic>`，Claude Code 使用
+`/ai-call-flow-navigator <topic>`。例如 `<topic>` 可写为“从 MainActivity.onCreate 开始分析
+调用链”。安装脚本和源码位于
 [AI Call Flow Navigator 仓库](https://github.com/Learner-Geek-Perfectionist/ai-call-flow-navigator)。
 Skill 投递器使用 Python 3.8+ 标准库；Windows 可使用 `py -3`。原子投递支持标准 APFS、
 ext4、NTFS 临时文件系统。
 
 ## 零配置使用
 
+“零配置”指无需配置端口、Token 或 `projectRoot`；Skill 仍由上面的命令显式启动。
+
 1. 安装插件。
 2. 在 Android Studio 中打开源码项目。
-3. 让同一台电脑上的 AI 分析项目并投递 Call Flow JSON。
+3. 在同一台电脑上显式调用 Skill，让 AI 分析项目并投递 Call Flow JSON。
 
 插件自动使用当前 IDE 项目根目录并监听本机系统临时交换目录。
 
@@ -130,5 +133,5 @@ Windows PowerShell 使用 `./gradlew.bat clean test buildPlugin verifyPlugin`。
 插件包生成在：
 
 ```text
-build/distributions/youngx-ai-call-flow-navigator-0.6.2.zip
+build/distributions/youngx-ai-call-flow-navigator-0.6.3.zip
 ```

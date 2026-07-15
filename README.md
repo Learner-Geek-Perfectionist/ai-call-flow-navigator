@@ -20,8 +20,9 @@ GitHub 仓库：[Learner-Geek-Perfectionist/ai-call-flow-navigator](https://gith
 
 ### Codex 与 Claude Code Skill
 
-仓库提供同一份 canonical `ai-call-flow-navigator` Skill。操作说明使用中文，Call Flow、JSON、
-edge kind 等协议名称保留英文。安装脚本会同时把它安装到：
+仓库提供同一套 canonical `ai-call-flow-navigator` Skill 内容。操作说明使用中文，Call Flow、
+JSON、edge kind 等协议名称保留英文。安装脚本会为 Codex 和 Claude Code 写入各自的显式
+调用元数据，并同时安装到：
 
 ```text
 ~/.agents/skills/ai-call-flow-navigator
@@ -45,8 +46,15 @@ cd ai-call-flow-navigator
 ```
 
 安装或更新 Skill 后新开一个 Codex/Claude Code 会话。在 Android Studio 实际打开的项目根
-目录中启动 AI，并这样调用。若是 monorepo 且 Android Studio 打开其中的 `android/`
-子目录，终端便从该子目录启动：
+目录中启动 AI；若是 monorepo 且 Android Studio 打开其中的 `android/` 子目录，终端便从
+该子目录启动。
+
+Skill 采用仅显式触发模式，只有主动输入命令时才运行：
+
+- Codex：`$ai-call-flow-navigator <topic>`
+- Claude Code：`/ai-call-flow-navigator <topic>`
+
+`<topic>` 用来描述入口、分析目标和范围。例如：
 
 - Codex：`$ai-call-flow-navigator 从 MainActivity.onCreate 开始分析调用链`
 - Claude Code：`/ai-call-flow-navigator 从 MainActivity.onCreate 开始分析调用链`
@@ -57,11 +65,13 @@ cd ai-call-flow-navigator
 
 ## 零配置 Call Flow
 
+这里的“零配置”指无需配置端口、Token 或 `projectRoot`；Skill 仍由上面的命令显式启动。
+
 正常使用只有三步：
 
 1. 安装 AI Call Flow Navigator 插件。
 2. 在 Android Studio 中打开源码项目。
-3. 在同一台电脑上，让 AI 分析当前项目并生成、投递 Call Flow JSON。
+3. 在同一台电脑上显式调用 Skill，让 AI 分析当前项目并生成、投递 Call Flow JSON。
 
 插件自动使用 Android Studio 当前打开的项目。收到有效文件后，插件会打开 `Call Flow`
 工具窗口并定位入口节点。
@@ -141,9 +151,9 @@ POSIX 系统使用当前用户私有的 `0700/0600` 权限；Windows 校验 owne
 ```text
 ai-call-flow-navigator/
   jetbrains/   Android Studio / JetBrains 插件，提供 Call Flow 和源码跳转
-  skills/      Codex 与 Claude Code 共用的 canonical Skill
+  skills/      Codex 与 Claude Code 共用的 canonical Skill 内容
   scripts/     Skill 安装脚本
-  tests/       Python 发布器回归测试
+  tests/       Skill 安装器与 Python 发布器回归测试
 ```
 
 ## 本地数据安全
@@ -168,7 +178,7 @@ cd jetbrains
 产物位置：
 
 ```text
-jetbrains/build/distributions/youngx-ai-call-flow-navigator-0.6.2.zip
+jetbrains/build/distributions/youngx-ai-call-flow-navigator-0.6.3.zip
 ```
 
 ## 许可证

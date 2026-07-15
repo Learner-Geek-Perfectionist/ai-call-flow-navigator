@@ -13,6 +13,7 @@ usage() {
 
 install_copy() {
   destination_root=$1
+  platform=$2
   destination="$destination_root/ai-call-flow-navigator"
   stage="$destination_root/.ai-call-flow-navigator.install.$$"
   backup="$destination_root/.ai-call-flow-navigator.backup.$$"
@@ -23,6 +24,57 @@ install_copy() {
     rm -rf "$stage"
     echo "Cannot stage the new Skill for $destination" >&2
     return 1
+  fi
+
+  if test "$platform" = claude; then
+    skill_file="$stage/SKILL.md"
+    transformed_skill="$stage/.SKILL.md.claude.$$"
+    if ! awk '
+      NR == 1 {
+        line = $0
+        carriage_return = ""
+        if (sub(/\r$/, "", line)) {
+          carriage_return = "\r"
+        }
+        if (line != "---") {
+          exit 10
+        }
+        print $0
+        in_frontmatter = 1
+        next
+      }
+      in_frontmatter {
+        line = $0
+        sub(/\r$/, "", line)
+        if (line ~ /^disable-model-invocation[[:space:]]*:/ ||
+            line ~ /^argument-hint[[:space:]]*:/) {
+          exit 11
+        }
+        if (line == "---") {
+          print "disable-model-invocation: true" carriage_return
+          print "argument-hint: \"<topic>\"" carriage_return
+          print $0
+          in_frontmatter = 0
+          found_closing_delimiter = 1
+          next
+        }
+      }
+      { print }
+      END {
+        if (!found_closing_delimiter) {
+          exit 12
+        }
+      }
+    ' "$skill_file" > "$transformed_skill"; then
+      rm -rf "$stage"
+      echo "Cannot prepare the Claude Skill metadata for $destination" >&2
+      return 1
+    fi
+    if ! mv "$transformed_skill" "$skill_file"; then
+      rm -rf "$stage"
+      echo "Cannot activate the Claude Skill metadata for $destination" >&2
+      return 1
+    fi
   fi
 
   had_previous=false
@@ -49,14 +101,14 @@ install_copy() {
 
 case "$TARGET" in
   all)
-    install_copy "$HOME/.agents/skills"
-    install_copy "$HOME/.claude/skills"
+    install_copy "$HOME/.agents/skills" codex
+    install_copy "$HOME/.claude/skills" claude
     ;;
   codex)
-    install_copy "$HOME/.agents/skills"
+    install_copy "$HOME/.agents/skills" codex
     ;;
   claude)
-    install_copy "$HOME/.claude/skills"
+    install_copy "$HOME/.claude/skills" claude
     ;;
   *)
     usage
