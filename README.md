@@ -20,7 +20,8 @@ GitHub 仓库：[Learner-Geek-Perfectionist/ai-call-flow-navigator](https://gith
 
 ### Codex 与 Claude Code Skill
 
-仓库提供同一份 canonical `ai-call-flow-navigator` Skill。安装脚本会同时把它安装到：
+仓库提供同一份 canonical `ai-call-flow-navigator` Skill。操作说明使用中文，Call Flow、JSON、
+edge kind 等协议名称保留英文。安装脚本会同时把它安装到：
 
 ```text
 ~/.agents/skills/ai-call-flow-navigator
@@ -167,7 +168,7 @@ cd jetbrains
 产物位置：
 
 ```text
-jetbrains/build/distributions/youngx-ai-call-flow-navigator-0.6.1.zip
+jetbrains/build/distributions/youngx-ai-call-flow-navigator-0.6.2.zip
 ```
 
 ## 许可证

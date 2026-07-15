@@ -1,4 +1,4 @@
 interface:
   display_name: "AI Call Flow Navigator"
-  short_description: "Analyze and send source call flows to Android Studio"
-  default_prompt: "Use $ai-call-flow-navigator to analyze a source entry point and send its call flow to Android Studio."
+  short_description: "分析源码执行链并投递到 Android Studio Call Flow"
+  default_prompt: "使用 $ai-call-flow-navigator 从指定源码入口分析调用链，并投递到 Android Studio。"

@@ -130,5 +130,5 @@ Windows PowerShell 使用 `./gradlew.bat clean test buildPlugin verifyPlugin`。
 插件包生成在：
 
 ```text
-build/distributions/youngx-ai-call-flow-navigator-0.6.1.zip
+build/distributions/youngx-ai-call-flow-navigator-0.6.2.zip
 ```
