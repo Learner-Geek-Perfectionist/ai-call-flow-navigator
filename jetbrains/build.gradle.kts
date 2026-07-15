@@ -6,6 +6,30 @@ plugins {
 group = providers.gradleProperty("pluginGroup").get()
 version = providers.gradleProperty("pluginVersion").get()
 
+val hostOs = System.getProperty("os.name").lowercase()
+val userHome = System.getProperty("user.home")
+val androidStudioCandidates = when {
+    hostOs.contains("mac") -> listOf(
+        "/Applications/Android Studio.app/Contents",
+        "$userHome/Applications/Android Studio.app/Contents"
+    )
+    hostOs.contains("win") -> listOfNotNull(
+        System.getenv("ProgramFiles")?.let { "$it/Android/Android Studio" },
+        System.getenv("LOCALAPPDATA")?.let { "$it/Programs/Android Studio" }
+    )
+    else -> listOf(
+        "/opt/android-studio",
+        "/usr/local/android-studio",
+        "$userHome/android-studio"
+    )
+}
+val androidStudioPath = providers.gradleProperty("androidStudioPath").orNull
+    ?: providers.environmentVariable("ANDROID_STUDIO_PATH").orNull
+    ?: androidStudioCandidates.firstOrNull { file(it).isDirectory }
+    ?: throw GradleException(
+        "Android Studio was not found. Set ANDROID_STUDIO_PATH or -PandroidStudioPath=<IDE home>."
+    )
+
 repositories {
     mavenCentral()
     intellijPlatform {
@@ -18,7 +42,7 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
     intellijPlatform {
-        local("/Applications/Android Studio.app/Contents")
+        local(androidStudioPath)
     }
 }
 
@@ -46,14 +70,20 @@ intellijPlatform {
         version = providers.gradleProperty("pluginVersion")
 
         description = """
-            Runs a local 127.0.0.1 bridge inside Android Studio so HTML source-link
-            nodes can open project files at a requested line and column without
-            navigating the browser to a new tab.
+            Loads Call Flow JSON files produced by local AI tools for the current
+            Android Studio project. Explore complete call flows with native step-by-step
+            playback and exact source navigation, without settings or network services.
         """.trimIndent()
 
         vendor {
-            name = "Learner-Geek-Perfectionist"
-            url = "https://github.com/Learner-Geek-Perfectionist/android-studio-bridge"
+            name = "YoungX"
+            url = "https://github.com/Learner-Geek-Perfectionist/ai-call-flow-navigator"
+        }
+    }
+
+    pluginVerification {
+        ides {
+            local(file(androidStudioPath))
         }
     }
 }

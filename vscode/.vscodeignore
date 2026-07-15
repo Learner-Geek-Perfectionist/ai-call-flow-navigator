@@ -1,7 +1,0 @@
-node_modules
-src
-out/**/*.map
-tsconfig.json
-package-lock.json
-.gitignore
-out/test

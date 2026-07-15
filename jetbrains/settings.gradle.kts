@@ -5,4 +5,4 @@ pluginManagement {
     }
 }
 
-rootProject.name = "android-studio-bridge-jetbrains"
+rootProject.name = "youngx-ai-call-flow-navigator"

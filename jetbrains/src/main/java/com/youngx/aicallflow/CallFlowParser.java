@@ -1,0 +1,132 @@
+package com.youngx.aicallflow;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonSyntaxException;
+import com.google.gson.Strictness;
+import com.google.gson.TypeAdapter;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
+import com.google.gson.stream.JsonWriter;
+
+import java.io.IOException;
+import java.io.StringReader;
+import java.util.Map;
+
+public final class CallFlowParser {
+    private static final TypeAdapter<String> STRICT_STRING = new TypeAdapter<String>() {
+        @Override
+        public void write(JsonWriter output, String value) throws IOException {
+            output.value(value);
+        }
+
+        @Override
+        public String read(JsonReader input) throws IOException {
+            if (input.peek() != JsonToken.STRING) {
+                throw new JsonSyntaxException("Expected a JSON string");
+            }
+            return input.nextString();
+        }
+    }.nullSafe();
+
+    private static final TypeAdapter<Integer> STRICT_INTEGER = new TypeAdapter<Integer>() {
+        @Override
+        public void write(JsonWriter output, Integer value) throws IOException {
+            output.value(value);
+        }
+
+        @Override
+        public Integer read(JsonReader input) throws IOException {
+            if (input.peek() != JsonToken.NUMBER) {
+                throw new JsonSyntaxException("Expected a JSON integer");
+            }
+            try {
+                return input.nextInt();
+            } catch (NumberFormatException error) {
+                throw new JsonSyntaxException("Expected a 32-bit JSON integer", error);
+            }
+        }
+    }.nullSafe();
+
+    private static final Gson GSON = new GsonBuilder()
+            .registerTypeAdapter(String.class, STRICT_STRING)
+            .registerTypeAdapter(int.class, STRICT_INTEGER)
+            .registerTypeAdapter(Integer.class, STRICT_INTEGER)
+            .registerTypeAdapter(NodeKind.class, strictEnum(Map.of(
+                    "entry", NodeKind.ENTRY,
+                    "declaration", NodeKind.DECLARATION,
+                    "call", NodeKind.CALL,
+                    "branch", NodeKind.BRANCH,
+                    "return", NodeKind.RETURN,
+                    "async", NodeKind.ASYNC,
+                    "callback", NodeKind.CALLBACK,
+                    "note", NodeKind.NOTE
+            )))
+            .registerTypeAdapter(EdgeKind.class, strictEnum(Map.of(
+                    "next", EdgeKind.NEXT,
+                    "step_into", EdgeKind.STEP_INTO,
+                    "step_over", EdgeKind.STEP_OVER,
+                    "step_out", EdgeKind.STEP_OUT,
+                    "branch_true", EdgeKind.BRANCH_TRUE,
+                    "branch_false", EdgeKind.BRANCH_FALSE,
+                    "return", EdgeKind.RETURN,
+                    "async", EdgeKind.ASYNC,
+                    "callback", EdgeKind.CALLBACK
+            )))
+            .create();
+
+    private CallFlowParser() {
+    }
+
+    public static CallFlow parse(String json) {
+        if (json == null) {
+            throw new IllegalArgumentException("Invalid call flow JSON: request body is required");
+        }
+        if (json.length() > CallFlowValidation.MAX_JSON_CHARACTERS) {
+            throw new IllegalArgumentException(
+                    "Invalid call flow JSON: request body must be at most "
+                            + CallFlowValidation.MAX_JSON_CHARACTERS + " characters"
+            );
+        }
+        if (json.isBlank()) {
+            throw new IllegalArgumentException("Invalid call flow JSON: request body is required");
+        }
+
+        try {
+            JsonReader reader = new JsonReader(new StringReader(json));
+            reader.setStrictness(Strictness.STRICT);
+            CallFlow flow = GSON.fromJson(reader, CallFlow.class);
+            if (reader.peek() != JsonToken.END_DOCUMENT) {
+                throw new IllegalArgumentException("Invalid call flow JSON: trailing content is not allowed");
+            }
+            CallFlowValidation.validate(flow);
+            return flow;
+        } catch (JsonParseException | IOException error) {
+            throw new IllegalArgumentException("Invalid call flow JSON: malformed JSON", error);
+        }
+    }
+
+    private static <E extends Enum<E>> TypeAdapter<E> strictEnum(Map<String, E> protocolValues) {
+        return new TypeAdapter<E>() {
+            @Override
+            public void write(JsonWriter output, E value) throws IOException {
+                for (Map.Entry<String, E> entry : protocolValues.entrySet()) {
+                    if (entry.getValue() == value) {
+                        output.value(entry.getKey());
+                        return;
+                    }
+                }
+                throw new JsonSyntaxException("Unsupported enum value: " + value);
+            }
+
+            @Override
+            public E read(JsonReader input) throws IOException {
+                if (input.peek() != JsonToken.STRING) {
+                    throw new JsonSyntaxException("Expected a JSON enum string");
+                }
+                return protocolValues.get(input.nextString());
+            }
+        }.nullSafe();
+    }
+}

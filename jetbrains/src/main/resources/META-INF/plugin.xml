@@ -1,16 +1,18 @@
 <idea-plugin>
-    <id>com.ouyang.asbridge</id>
-    <name>Android Studio Bridge</name>
-    <vendor url="https://github.com/Learner-Geek-Perfectionist/android-studio-bridge">Learner-Geek-Perfectionist</vendor>
+    <id>com.youngx.aicallflow</id>
+    <name>AI Call Flow Navigator</name>
+    <vendor url="https://github.com/Learner-Geek-Perfectionist/ai-call-flow-navigator">YoungX</vendor>
 
     <depends>com.intellij.modules.platform</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <projectService serviceImplementation="com.ouyang.asbridge.AndroidStudioBridgeSettings"/>
-        <projectService serviceImplementation="com.ouyang.asbridge.AndroidStudioBridgeProjectService"/>
-        <postStartupActivity implementation="com.ouyang.asbridge.AndroidStudioBridgeStartupActivity"/>
-        <projectConfigurable parentId="tools"
-                             instance="com.ouyang.asbridge.AndroidStudioBridgeConfigurable"
-                             displayName="Android Studio Bridge"/>
+        <applicationService serviceImplementation="com.youngx.aicallflow.CallFlowFileInboxService"/>
+        <projectService serviceImplementation="com.youngx.aicallflow.AiCallFlowProjectService"/>
+        <projectService serviceImplementation="com.youngx.aicallflow.CallFlowSessionService"/>
+        <postStartupActivity implementation="com.youngx.aicallflow.AiCallFlowStartupActivity"/>
+        <toolWindow id="Call Flow"
+                    anchor="right"
+                    canCloseContents="false"
+                    factoryClass="com.youngx.aicallflow.CallFlowToolWindowFactory"/>
     </extensions>
 </idea-plugin>
