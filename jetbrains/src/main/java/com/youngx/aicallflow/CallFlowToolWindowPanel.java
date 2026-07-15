@@ -14,6 +14,7 @@ import com.intellij.ui.components.JBTextArea;
 import com.intellij.util.ui.JBUI;
 import org.jetbrains.annotations.NotNull;
 
+import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
@@ -21,18 +22,24 @@ import javax.swing.JComponent;
 import javax.swing.JList;
 import javax.swing.JPanel;
 import javax.swing.JSplitPane;
+import javax.swing.KeyStroke;
 import javax.swing.ListSelectionModel;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /** Swing UI for reviewing and playing an AI-produced source call flow. */
 public final class CallFlowToolWindowPanel extends JPanel
         implements Disposable, CallFlowSessionService.Listener {
+    private static final String NAVIGATE_SELECTED_NODE_ACTION = "navigate-selected-call-flow-node";
+
     private final AiCallFlowProjectService projectService;
     private final CallFlowSessionService session;
     private final DefaultListModel<CallFlowNode> nodeModel = new DefaultListModel<>();
@@ -118,6 +125,7 @@ public final class CallFlowToolWindowPanel extends JPanel
                 }
             }
         });
+        installEnterNavigation(nodeList, this::navigateToNode);
         nodeList.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent event) {
@@ -127,7 +135,7 @@ public final class CallFlowToolWindowPanel extends JPanel
                 int index = nodeList.locationToIndex(event.getPoint());
                 var bounds = index < 0 ? null : nodeList.getCellBounds(index, index);
                 if (bounds != null && bounds.contains(event.getPoint())) {
-                    session.jumpTo(nodeModel.get(index).id());
+                    navigateToNode(nodeModel.get(index));
                 }
             }
         });
@@ -150,6 +158,31 @@ public final class CallFlowToolWindowPanel extends JPanel
         splitPane.setResizeWeight(0.42);
         splitPane.setBorder(null);
         add(splitPane, BorderLayout.CENTER);
+    }
+
+    static void installEnterNavigation(
+            JList<CallFlowNode> list,
+            Consumer<CallFlowNode> navigation
+    ) {
+        Objects.requireNonNull(list, "list");
+        Objects.requireNonNull(navigation, "navigation");
+        list.getInputMap(JComponent.WHEN_FOCUSED).put(
+                KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0),
+                NAVIGATE_SELECTED_NODE_ACTION
+        );
+        list.getActionMap().put(NAVIGATE_SELECTED_NODE_ACTION, new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent event) {
+                CallFlowNode selected = list.getSelectedValue();
+                if (selected != null) {
+                    navigation.accept(selected);
+                }
+            }
+        });
+    }
+
+    private void navigateToNode(CallFlowNode node) {
+        session.jumpTo(node.id());
     }
 
     private void configureActions() {
