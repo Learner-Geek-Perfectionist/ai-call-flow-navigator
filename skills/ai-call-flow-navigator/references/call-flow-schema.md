@@ -1,8 +1,8 @@
 # Call Flow content schema
 
-The publisher accepts one UTF-8 JSON object containing Call Flow content version `1.0`. It rejects `_delivery`; delivery metadata is generated automatically.
+The publisher accepts one UTF-8 JSON object containing Call Flow content version `1.0` and adds delivery metadata automatically.
 
-Only the fields listed below are allowed at each object level. Unknown or duplicate fields are rejected so accidental future/legacy metadata cannot silently change the tour.
+Each object uses exactly the fields listed below; strict validation keeps the resulting source tour deterministic.
 
 ## Shape
 
@@ -34,7 +34,7 @@ Only the fields listed below are allowed at each object level. Unknown or duplic
 }
 ```
 
-`project` is optional. If present, it contains only a non-empty `revision`. It is descriptive metadata, not a filesystem root.
+`project` is optional descriptive revision metadata containing one non-empty `revision`.
 
 ## Nodes
 
@@ -51,21 +51,21 @@ Node kinds:
 - `callback`
 - `note`
 
-`id` must be unique, non-empty, at most 256 characters, and free of control characters. Use stable descriptive IDs rather than array indexes.
+`id` must be unique, non-empty, at most 256 characters, and free of control characters. Use stable descriptive IDs.
 
 Every `location` requires:
 
-- `path`: normalized repository-relative path using `/`; no absolute path, URI, `.`, or `..` segment.
+- `path`: normalized path relative to the repository root, using `/` and the form `segment[/segment...]` with canonical source-tree segments.
 - `line`: positive 1-based source line.
 - `column`: positive 1-based Android Studio column (UTF-16 code-unit offset plus one).
 
 Optional location fields:
 
-- `endLine` and `endColumn`: provide both or neither; the exclusive end cannot precede the start.
+- `endLine` and `endColumn`: provide both together; the exclusive end is at or after the start.
 - `symbol`: qualified symbol name when known.
 - `anchorText`: short exact text from one source line. The publisher requires it to occur once within 20 lines and to start at the supplied line and column.
 
-The publisher verifies that source files and coordinates exist under the current working directory. Source files must be UTF-8 (an optional UTF-8 BOM is accepted). Source symlinks are accepted only when their real target remains inside that directory.
+The publisher verifies that source files and coordinates exist under the current working directory. Source files use UTF-8 (an optional UTF-8 BOM is accepted), and source symlinks resolve to targets inside that directory.
 
 ## Edges
 
@@ -85,7 +85,7 @@ Edge kinds:
 
 The top-level `entry` must reference an existing node; use kind `entry` for a normal user-requested starting point. The edge array order controls candidate order in Android Studio. An empty array is valid only when the flow needs no transition, such as a single-node tour.
 
-The protocol has no dedicated error kind. Use a `branch` node plus a labeled branch edge for an error condition, and use a `return` or `note` node for the resulting exit when appropriate.
+Model error conditions with a `branch` node plus a labeled branch edge, and use a `return` or `note` node for the resulting exit when appropriate.
 
 ## Limits
 
@@ -97,4 +97,4 @@ The protocol has no dedicated error kind. Use a `branch` node plus a labeled bra
 - Path and optional revision: at most 4,096 UTF-16 code units each.
 - Optional symbol: at most 512 UTF-16 code units.
 
-All required and optional string values, when present, must be non-blank. The top-level `entry` must reference an existing node.
+All required and optional string values are non-blank when present. The top-level `entry` references an existing node.
