@@ -88,8 +88,8 @@ Call Flow 顶层内容 `version` 仍是 `1.0`。发布器先完整写入
 交换路径固定且可预测，并校验 owner、权限和文件类型。`.consumer.lock` 协调 Android
 Studio 消费进程。
 
-插件把认领的请求移入 `processing`，校验 UTF-8、2 MiB 大小上限、投递信息和 Call Flow
-结构。通过后，原始 JSON 会先持久化到 IDE JVM 的系统临时目录，再交给工具窗口；结果写入
+插件把认领的请求移入 `processing`，校验 UTF-8、投递信息和 Call Flow 结构。通过后，原始
+JSON 会先持久化到 IDE JVM 的系统临时目录，再交给工具窗口；结果写入
 `receipts/receipt-<UUID>.json`。AI 等待 `accepted` 或 `rejected` 回执。
 
 `<system-temp>` 来自 Android Studio JVM 的 `java.io.tmpdir`：macOS 通常与 `$TMPDIR`
@@ -130,5 +130,5 @@ Windows PowerShell 使用 `./gradlew.bat clean test buildPlugin verifyPlugin`。
 插件包生成在：
 
 ```text
-build/distributions/youngx-ai-call-flow-navigator-0.6.0.zip
+build/distributions/youngx-ai-call-flow-navigator-0.6.1.zip
 ```

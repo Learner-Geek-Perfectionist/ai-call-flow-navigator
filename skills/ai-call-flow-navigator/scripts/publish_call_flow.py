@@ -20,7 +20,6 @@ CALL_FLOW_VERSION = "1.0"
 DELIVERY_VERSION = "2.0"
 CHANNEL_DIRECTORY = "youngx-ai-call-flow-navigator"
 PROTOCOL_DIRECTORY = "file-ipc-v2"
-MAX_REQUEST_BYTES = 2 * 1024 * 1024
 MAX_RECEIPT_BYTES = 1024 * 1024
 MAX_INT32 = 2_147_483_647
 
@@ -95,8 +94,8 @@ def _object_without_duplicates(pairs):
     return result
 
 
-def _parse_json_bytes(data, label, maximum):
-    if len(data) > maximum:
+def _parse_json_bytes(data, label, maximum=None):
+    if maximum is not None and len(data) > maximum:
         raise PublisherError("%s is larger than %d bytes" % (label, maximum))
     try:
         text = data.decode("utf-8")
@@ -466,7 +465,7 @@ def _read_input(path, delete_input):
     if not delete_input:
         try:
             with path.open("rb") as input_file:
-                return input_file.read(MAX_REQUEST_BYTES + 1)
+                return input_file.read()
         except OSError as error:
             raise PublisherError("cannot read Call Flow JSON: %s" % error)
 
@@ -507,7 +506,7 @@ def _read_input(path, delete_input):
             raise PublisherError("temporary Call Flow JSON changed before it could be read")
         with os.fdopen(descriptor, "rb") as input_file:
             descriptor = None
-            data = input_file.read(MAX_REQUEST_BYTES + 1)
+            data = input_file.read()
     except OSError as error:
         raise PublisherError("cannot securely read Call Flow JSON: %s" % error)
     finally:
@@ -767,7 +766,7 @@ def main(argv=None):
 
     input_path = Path(args.flow_json).expanduser()
     input_data = _read_input(input_path, args.delete_input)
-    flow = _validate_call_flow(_parse_json_bytes(input_data, "Call Flow JSON", MAX_REQUEST_BYTES))
+    flow = _validate_call_flow(_parse_json_bytes(input_data, "Call Flow JSON"))
     _validate_sources(flow, Path.cwd())
 
     inbox, receipts = _exchange_directories(args.temp_root)
@@ -781,9 +780,6 @@ def main(argv=None):
         "expiresAtEpochMs": created + args.expires_in * 1000,
     }
     payload = (json.dumps(request, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
-    if len(payload) > MAX_REQUEST_BYTES:
-        raise PublisherError("Call Flow request is larger than %d bytes after adding delivery metadata" % MAX_REQUEST_BYTES)
-
     final_request = _publish_request(inbox, request_id, payload)
     return _wait_for_receipt(
         receipts,

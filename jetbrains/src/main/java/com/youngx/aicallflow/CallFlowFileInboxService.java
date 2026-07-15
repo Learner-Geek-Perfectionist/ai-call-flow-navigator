@@ -35,7 +35,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class CallFlowFileInboxService implements Disposable {
-    static final int MAX_REQUEST_BYTES = 2 * 1024 * 1024;
     static final int MAX_RECEIPTS = 100;
     static final String CHANNEL_DIRECTORY = "youngx-ai-call-flow-navigator";
 
@@ -498,10 +497,7 @@ public final class CallFlowFileInboxService implements Disposable {
                 StandardOpenOption.READ,
                 LinkOption.NOFOLLOW_LINKS
         )) {
-            bytes = input.readNBytes(MAX_REQUEST_BYTES + 1);
-        }
-        if (bytes.length > MAX_REQUEST_BYTES) {
-            throw new IOException("Call Flow request must be at most " + MAX_REQUEST_BYTES + " bytes");
+            bytes = input.readAllBytes();
         }
         try {
             return StandardCharsets.UTF_8.newDecoder()

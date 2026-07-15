@@ -83,12 +83,6 @@ public final class CallFlowParser {
         if (json == null) {
             throw new IllegalArgumentException("Invalid call flow JSON: request body is required");
         }
-        if (json.length() > CallFlowValidation.MAX_JSON_CHARACTERS) {
-            throw new IllegalArgumentException(
-                    "Invalid call flow JSON: request body must be at most "
-                            + CallFlowValidation.MAX_JSON_CHARACTERS + " characters"
-            );
-        }
         if (json.isBlank()) {
             throw new IllegalArgumentException("Invalid call flow JSON: request body is required");
         }

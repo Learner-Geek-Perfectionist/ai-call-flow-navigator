@@ -110,8 +110,8 @@ Project 的 canonical root。
 交换目录使用固定路径，并校验 owner、权限和文件类型。插件通过 `.consumer.lock` 协调
 Android Studio 消费进程。
 
-插件认领请求后会把文件移入 `processing`，校验 UTF-8、2 MiB 大小上限、投递信息和 Call
-Flow 结构，然后把通过校验的原始 JSON 持久化到 IDE JVM 的系统临时目录并加载工具窗口。
+插件认领请求后会把文件移入 `processing`，校验 UTF-8、投递信息和 Call Flow 结构，然后把
+通过校验的原始 JSON 持久化到 IDE JVM 的系统临时目录并加载工具窗口。
 最后在 `receipts/receipt-<UUID>.json` 写入 `accepted` 或 `rejected` 回执。AI 应等待同一
 `requestId` 的回执。
 
@@ -142,6 +142,7 @@ ai-call-flow-navigator/
   jetbrains/   Android Studio / JetBrains 插件，提供 Call Flow 和源码跳转
   skills/      Codex 与 Claude Code 共用的 canonical Skill
   scripts/     Skill 安装脚本
+  tests/       Python 发布器回归测试
 ```
 
 ## 本地数据安全
@@ -157,6 +158,8 @@ JetBrains 插件构建需要 JDK 21 和 Android Studio。脚本识别 macOS、Li
 `-PandroidStudioPath=<Android Studio IDE home>` 指定 IDE 位置。
 
 ```bash
+python3 -m unittest discover -s tests -v
+
 cd jetbrains
 ./gradlew clean test buildPlugin verifyPlugin
 ```
@@ -164,7 +167,7 @@ cd jetbrains
 产物位置：
 
 ```text
-jetbrains/build/distributions/youngx-ai-call-flow-navigator-0.6.0.zip
+jetbrains/build/distributions/youngx-ai-call-flow-navigator-0.6.1.zip
 ```
 
 ## 许可证

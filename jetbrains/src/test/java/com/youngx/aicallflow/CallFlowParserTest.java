@@ -185,9 +185,31 @@ final class CallFlowParserTest {
     }
 
     @Test
-    void rejectsOversizedPayloadListsAndStrings() {
-        String oversizedJson = " ".repeat(CallFlowValidation.MAX_JSON_CHARACTERS + 1);
-        assertInvalid("request body must be at most", oversizedJson);
+    void acceptsPayloadLargerThanTwoMiB() {
+        String summary = "x".repeat(12_000);
+        StringBuilder nodes = new StringBuilder("[");
+        for (int index = 0; index < 200; index++) {
+            if (index > 0) {
+                nodes.append(',');
+            }
+            nodes.append("""
+                    {"id":"n%d","kind":"%s","location":{"path":"app/Main.kt","line":1,"column":1},"summary":"%s"}
+                    """.formatted(index, index == 0 ? "entry" : "call", summary).strip());
+        }
+        nodes.append(']');
+        String largeJson = """
+                {"version":"1.0","title":"Large flow","nodes":%s,"edges":[],"entry":"n0"}
+                """.formatted(nodes);
+        assertTrue(largeJson.length() > 2 * 1024 * 1024);
+
+        CallFlow flow = CallFlowParser.parse(largeJson);
+
+        assertEquals("Large flow", flow.title());
+        assertEquals(200, flow.nodes().size());
+    }
+
+    @Test
+    void rejectsOversizedListsAndStrings() {
         assertInvalid(
                 "title must be at most 512 characters",
                 validJson().replace("Login flow", "t".repeat(513))

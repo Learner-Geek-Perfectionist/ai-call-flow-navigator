@@ -119,6 +119,33 @@ final class CallFlowFileInboxServiceTest {
     }
 
     @Test
+    void acceptsPublishedRequestLargerThanTwoMiB() throws Exception {
+        Path configuredTempRoot = Files.createDirectory(temporaryDirectory.resolve("system-temp"));
+        Path stored = temporaryDirectory.resolve("large-call-flow.json");
+        AtomicReference<String> receivedJson = new AtomicReference<>();
+        CallFlowFileInboxService service = new CallFlowFileInboxService(FIXED_CLOCK, configuredTempRoot);
+
+        try (CallFlowFileInboxService.Registration ignored = service.register(
+                persistingReceiver(stored, new AtomicInteger(), receivedJson)
+        )) {
+            String requestId = "large-request";
+            String sourceJson = " ".repeat(2 * 1024 * 1024 + 1)
+                    + requestJson(requestId, NOW - 1_000L, NOW + 60_000L);
+            publish(service, requestId, sourceJson);
+
+            service.scanOnce();
+            awaitRegularFile(receiptPath(service, requestId));
+
+            assertEquals("accepted", readReceipt(service, requestId).get("status").getAsString());
+            assertEquals(sourceJson, receivedJson.get());
+            assertEquals(sourceJson, Files.readString(stored));
+            assertProcessingEmpty(service);
+        } finally {
+            service.dispose();
+        }
+    }
+
+    @Test
     void rejectsARequestWhenMultipleReceiversAreRegistered() throws Exception {
         Path configuredTempRoot = Files.createDirectory(temporaryDirectory.resolve("system-temp"));
         AtomicInteger firstCount = new AtomicInteger();

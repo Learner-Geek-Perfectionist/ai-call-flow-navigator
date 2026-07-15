@@ -89,7 +89,6 @@ Model error conditions with a `branch` node plus a labeled branch edge, and use 
 
 ## Limits
 
-- Encoded request: at most 2 MiB.
 - Title and edge label: at most 512 UTF-16 code units each.
 - Nodes: 1 to 10,000.
 - Edges: 0 to 50,000.

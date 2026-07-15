@@ -6,7 +6,6 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 final class CallFlowValidation {
-    static final int MAX_JSON_CHARACTERS = 2 * 1024 * 1024;
     static final int MAX_NODES = 10_000;
     static final int MAX_EDGES = 50_000;
 
