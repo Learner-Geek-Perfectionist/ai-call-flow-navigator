@@ -52,6 +52,11 @@ public final class CallFlowNavigator implements Disposable {
 
     /** Must be called on the IntelliJ event-dispatch thread. */
     public NavigationResult navigate(@NotNull CallFlowNode node) {
+        return navigate(node, true);
+    }
+
+    /** Must be called on the IntelliJ event-dispatch thread. */
+    NavigationResult navigate(@NotNull CallFlowNode node, boolean focusEditor) {
         ApplicationManager.getApplication().assertIsDispatchThread();
         clearHighlight();
         CallFlowLocation location = node.location();
@@ -72,7 +77,10 @@ public final class CallFlowNavigator implements Disposable {
 
         ResolvedLocation resolved = resolveLocation(document, location);
         OpenFileDescriptor descriptor = new OpenFileDescriptor(project, file, resolved.startOffset());
-        Editor editor = FileEditorManager.getInstance(project).openTextEditor(descriptor, true);
+        Editor editor = FileEditorManager.getInstance(project).openTextEditor(
+                descriptor,
+                focusEditor
+        );
         if (editor == null) {
             throw new IllegalArgumentException("No text editor is available for: " + location.path());
         }

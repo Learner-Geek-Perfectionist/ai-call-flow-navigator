@@ -7,6 +7,7 @@ import org.jetbrains.annotations.NotNull;
 public final class AiCallFlowStartupActivity implements StartupActivity.DumbAware {
     @Override
     public void runActivity(@NotNull Project project) {
+        project.getService(LiveDebuggerTraceService.class);
         project.getService(AiCallFlowProjectService.class).start();
     }
 }

@@ -1,7 +1,7 @@
 interface:
   display_name: "AI Call Flow Navigator"
-  short_description: "显式分析源码执行链并投递到 Android Studio"
-  default_prompt: "使用 $ai-call-flow-navigator 从 MainActivity.onCreate 开始分析调用链，并投递到 Android Studio。"
+  short_description: "显式定位入口并请求 Android Studio 分析"
+  default_prompt: "使用 $ai-call-flow-navigator 分析登录按钮到首页的执行路径。"
 
 policy:
   allow_implicit_invocation: false

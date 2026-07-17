@@ -16,10 +16,9 @@ public final class AiCallFlowProjectService implements Disposable {
     private static final Logger LOG = Logger.getInstance(AiCallFlowProjectService.class);
 
     private final Project project;
-    private CallFlowFileStore fileStore;
-    private CallFlowFileInboxService.Registration registration;
+    private AnalysisRequestFileInboxService.Registration registration;
     private volatile Path projectRoot;
-    private volatile String connectionStatus = "Preparing local JSON inbox";
+    private volatile String connectionStatus = "Preparing analysis request inbox";
     private volatile long connectionGeneration;
 
     public AiCallFlowProjectService(@NotNull Project project) {
@@ -40,25 +39,23 @@ public final class AiCallFlowProjectService implements Disposable {
         long generation = connectionGeneration;
 
         try {
-            CallFlowFileStore activeStore = CallFlowFileStore.create(root);
-            fileStore = activeStore;
-            registration = CallFlowFileInboxService.getInstance().register(
-                    (flow, sourceJson) -> receive(generation, activeStore, flow, sourceJson)
+            registration = AnalysisRequestFileInboxService.getInstance().register(
+                    request -> receive(generation, request)
             );
         } catch (IOException | RuntimeException error) {
             stop();
             String detail = error.getMessage();
             failConnection(
                     detail == null || detail.isBlank()
-                            ? "Cannot start the local JSON inbox"
+                            ? "Cannot start the analysis request inbox"
                             : detail,
                     error
             );
             return;
         }
 
-        connectionStatus = "File inbox ready · waiting for AI";
-        setStatus("AI Call Flow Navigator: waiting for a local Call Flow JSON file");
+        connectionStatus = "File inbox ready · waiting for AI Skill";
+        setStatus("AI Call Flow Navigator: waiting for an AI analysis request");
     }
 
     public String connectionStatus() {
@@ -75,46 +72,38 @@ public final class AiCallFlowProjectService implements Disposable {
         stop();
     }
 
-    private CompletionStage<Path> receive(
+    private CompletionStage<CallFlow> receive(
             long generation,
-            CallFlowFileStore expectedStore,
-            CallFlow flow,
-            String sourceJson
+            AnalysisRequest request
     ) {
-        CompletableFuture<Path> completion = new CompletableFuture<>();
-        if (!isCurrentRegistration(generation, expectedStore)) {
+        CompletableFuture<CallFlow> completion = new CompletableFuture<>();
+        if (!isCurrentRegistration(generation)) {
             completion.completeExceptionally(
-                    new IllegalStateException("Call Flow project registration changed")
+                    new IllegalStateException("Analysis request project registration changed")
             );
             return completion;
         }
 
-        Path storedPath;
+        CompletionStage<CallFlow> generationRequest;
         try {
-            storedPath = expectedStore.persist(sourceJson);
-            if (!isCurrentRegistration(generation, expectedStore)) {
-                Files.deleteIfExists(storedPath);
-                throw new IOException("Call Flow project registration changed while saving JSON");
-            }
-        } catch (IOException | RuntimeException error) {
+            generationRequest = StaticCallFlowGenerationService.getInstance(project)
+                    .generateAndLoad(request, () -> isCurrentRegistration(generation));
+        } catch (RuntimeException error) {
             completion.completeExceptionally(error);
             return completion;
         }
 
-        CallFlowSessionService.getInstance(project)
-                .loadAsync(flow, () -> isCurrentRegistration(generation, expectedStore))
-                .whenComplete((ignored, error) -> {
-                    if (error == null) {
-                        completion.complete(storedPath);
-                        return;
-                    }
-                    try {
-                        Files.deleteIfExists(storedPath);
-                    } catch (IOException cleanupError) {
-                        error.addSuppressed(cleanupError);
-                    }
-                    completion.completeExceptionally(error);
-                });
+        generationRequest.whenComplete((flow, error) -> {
+            if (error != null) {
+                completion.completeExceptionally(error);
+            } else if (!isCurrentRegistration(generation)) {
+                completion.completeExceptionally(
+                        new IllegalStateException("Analysis request project registration changed")
+                );
+            } else {
+                completion.complete(flow);
+            }
+        });
         return completion;
     }
 
@@ -124,18 +113,10 @@ public final class AiCallFlowProjectService implements Disposable {
             registration.close();
             registration = null;
         }
-        if (fileStore != null) {
-            fileStore.close();
-            fileStore = null;
-        }
     }
 
-    private boolean isCurrentRegistration(
-            long generation,
-            CallFlowFileStore expectedStore
-    ) {
+    private boolean isCurrentRegistration(long generation) {
         return connectionGeneration == generation
-                && fileStore == expectedStore
                 && !project.isDisposed();
     }
 

@@ -16,8 +16,6 @@ import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.nio.file.attribute.UserPrincipal;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.Set;
@@ -35,7 +33,7 @@ final class SecureFileSupport {
             PosixFilePermission.OWNER_WRITE
     );
 
-    record ProcessIdentity(UserPrincipal owner, Long unixUid) {
+    record ProcessIdentity(UserPrincipal owner) {
     }
 
     private static final class ForeignOwnerException extends IOException {
@@ -57,58 +55,9 @@ final class SecureFileSupport {
                 owner = null;
             }
 
-            Long unixUid = null;
-            try {
-                Object value = Files.getAttribute(probe, "unix:uid", LinkOption.NOFOLLOW_LINKS);
-                if (value instanceof Integer integer) {
-                    unixUid = Integer.toUnsignedLong(integer);
-                } else if (value instanceof Number number && number.longValue() >= 0) {
-                    unixUid = number.longValue();
-                }
-            } catch (IOException | IllegalArgumentException | UnsupportedOperationException ignored) {
-                // Windows and non-Unix file systems do not expose unix:uid.
-            }
-            return new ProcessIdentity(owner, unixUid);
+            return new ProcessIdentity(owner);
         } finally {
             Files.deleteIfExists(probe);
-        }
-    }
-
-    static Path createPrivateRoot(
-            Path trustedParent,
-            String directoryName,
-            ProcessIdentity identity
-    ) throws IOException {
-        Path primary = trustedParent.resolve(directoryName);
-        try {
-            createPrivateDirectory(primary, identity.owner());
-            return primary;
-        } catch (IOException primaryError) {
-            String userPart = identity.unixUid() == null
-                    ? "user"
-                    : "user-" + identity.unixUid();
-            Path fallback = null;
-            boolean ready = false;
-            try {
-                fallback = Files.createTempDirectory(
-                        trustedParent,
-                        directoryName + "-" + userPart + "-"
-                );
-                createPrivateDirectory(fallback, identity.owner());
-                ready = true;
-                return fallback;
-            } catch (IOException fallbackError) {
-                fallbackError.addSuppressed(primaryError);
-                throw fallbackError;
-            } finally {
-                if (fallback != null && !ready) {
-                    try {
-                        Files.deleteIfExists(fallback);
-                    } catch (IOException | SecurityException ignored) {
-                        // The original initialization failure is more useful to the caller.
-                    }
-                }
-            }
         }
     }
 
@@ -215,7 +164,7 @@ final class SecureFileSupport {
                 // A random claim-name collision is extraordinarily unlikely; retry safely.
             }
         }
-        throw new IOException("Cannot allocate a unique Call Flow processing claim");
+        throw new IOException("Cannot allocate a unique analysis request processing claim");
     }
 
     static Path moveAtomicallyWithoutReplace(
@@ -242,16 +191,6 @@ final class SecureFileSupport {
                     return target;
                 }
             }
-        }
-    }
-
-    static String projectDirectoryName(String canonicalProjectRoot) {
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(canonicalProjectRoot.getBytes(StandardCharsets.UTF_8));
-            return "project-" + Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
-        } catch (NoSuchAlgorithmException error) {
-            throw new IllegalStateException("SHA-256 is not available", error);
         }
     }
 

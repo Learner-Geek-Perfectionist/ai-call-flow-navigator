@@ -24,8 +24,19 @@ final class PluginXmlTest {
         assertEquals("com.youngx.aicallflow", text(document, "id"));
         assertEquals("AI Call Flow Navigator", text(document, "name"));
         assertEquals("YoungX", text(document, "vendor"));
+        assertEquals(0, document.getElementsByTagName("action").getLength());
 
-        Element extensions = (Element) document.getElementsByTagName("extensions").item(0);
+        Element extensions = null;
+        for (int index = 0; index < document.getElementsByTagName("extensions").getLength(); index++) {
+            Element candidate = (Element) document.getElementsByTagName("extensions").item(index);
+            if ("com.intellij".equals(candidate.getAttribute("defaultExtensionNs"))) {
+                extensions = candidate;
+                break;
+            }
+        }
+        if (extensions == null) {
+            throw new AssertionError("Missing com.intellij extension registrations");
+        }
         List<String> registrations = new ArrayList<>();
         for (Node child = extensions.getFirstChild(); child != null; child = child.getNextSibling()) {
             if (!(child instanceof Element extension)) {
@@ -44,9 +55,10 @@ final class PluginXmlTest {
         }
 
         assertEquals(List.of(
-                "applicationService:com.youngx.aicallflow.CallFlowFileInboxService",
+                "applicationService:com.youngx.aicallflow.AnalysisRequestFileInboxService",
                 "projectService:com.youngx.aicallflow.AiCallFlowProjectService",
                 "projectService:com.youngx.aicallflow.CallFlowSessionService",
+                "projectService:com.youngx.aicallflow.StaticCallFlowGenerationService",
                 "postStartupActivity:com.youngx.aicallflow.AiCallFlowStartupActivity",
                 "toolWindow:Call Flow:com.youngx.aicallflow.CallFlowToolWindowFactory"
         ), registrations);

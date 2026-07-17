@@ -35,12 +35,12 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-public final class CallFlowFileInboxService implements Disposable {
+public final class AnalysisRequestFileInboxService implements Disposable {
     static final int MAX_RECEIPTS = 100;
     static final String CHANNEL_DIRECTORY = "youngx-ai-call-flow-navigator";
 
-    private static final Logger LOG = Logger.getInstance(CallFlowFileInboxService.class);
-    private static final String FILE_PROTOCOL_DIRECTORY = "file-ipc-v2";
+    private static final Logger LOG = Logger.getInstance(AnalysisRequestFileInboxService.class);
+    private static final String FILE_PROTOCOL_DIRECTORY = "file-ipc-v3";
     private static final long SCAN_INTERVAL_MILLIS = 500L;
     private static final long STALE_CLAIM_MILLIS = TimeUnit.MINUTES.toMillis(10L);
 
@@ -59,26 +59,26 @@ public final class CallFlowFileInboxService implements Disposable {
     private FileChannel consumerLockChannel;
     private FileLock consumerLock;
 
-    public CallFlowFileInboxService() {
+    public AnalysisRequestFileInboxService() {
         this(Clock.systemUTC(), null);
     }
 
-    CallFlowFileInboxService(Clock clock, Path temporaryRoot) {
+    AnalysisRequestFileInboxService(Clock clock, Path temporaryRoot) {
         this.clock = Objects.requireNonNull(clock, "clock");
         this.configuredTemporaryRoot = temporaryRoot;
     }
 
-    public static CallFlowFileInboxService getInstance() {
-        return ApplicationManager.getApplication().getService(CallFlowFileInboxService.class);
+    public static AnalysisRequestFileInboxService getInstance() {
+        return ApplicationManager.getApplication().getService(AnalysisRequestFileInboxService.class);
     }
 
-    Registration register(CallFlowFileReceiver receiver) throws IOException {
+    Registration register(AnalysisRequestReceiver receiver) throws IOException {
         Objects.requireNonNull(receiver, "receiver");
         RegisteredTarget target = new RegisteredTarget(receiver);
 
         synchronized (lifecycleLock) {
             if (disposed) {
-                throw new IOException("Call Flow file inbox is disposed");
+                throw new IOException("Analysis request inbox is disposed");
             }
             ensureStarted();
             targets.add(target);
@@ -109,7 +109,7 @@ public final class CallFlowFileInboxService implements Disposable {
                 paths.sorted(Comparator.comparing(path -> path.getFileName().toString()))
                         .forEach(this::processCandidateSafely);
             } catch (IOException | SecurityException error) {
-                LOG.warn("Cannot scan AI Call Flow file inbox", error);
+                LOG.warn("Cannot scan AI analysis request inbox", error);
             }
         }
     }
@@ -170,7 +170,7 @@ public final class CallFlowFileInboxService implements Disposable {
 
         try {
             executor = Executors.newSingleThreadScheduledExecutor(task -> {
-                Thread thread = new Thread(task, "AI Call Flow file inbox");
+                Thread thread = new Thread(task, "AI analysis request inbox");
                 thread.setDaemon(true);
                 return thread;
             });
@@ -205,7 +205,7 @@ public final class CallFlowFileInboxService implements Disposable {
                 lock = null;
             }
             if (lock == null) {
-                throw new IOException("Another Android Studio process is already using the Call Flow inbox");
+                throw new IOException("Another Android Studio process is already using the analysis request inbox");
             }
             consumerLockChannel = channel;
             consumerLock = lock;
@@ -227,13 +227,13 @@ public final class CallFlowFileInboxService implements Disposable {
                 lock.release();
             }
         } catch (IOException error) {
-            LOG.warn("Cannot release the Call Flow inbox lock", error);
+            LOG.warn("Cannot release the analysis request inbox lock", error);
         } finally {
             if (channel != null) {
                 try {
                     channel.close();
                 } catch (IOException error) {
-                    LOG.warn("Cannot close the Call Flow inbox lock", error);
+                    LOG.warn("Cannot close the analysis request inbox lock", error);
                 }
             }
         }
@@ -252,14 +252,14 @@ public final class CallFlowFileInboxService implements Disposable {
     }
 
     private void processCandidateSafely(Path requestPath) {
-        String requestId = CallFlowDeliveryParser.requestIdFromFileName(requestPath);
+        String requestId = AnalysisRequestParser.requestIdFromFileName(requestPath);
         if (requestId == null) {
             return;
         }
         try {
             processCandidate(requestPath, requestId);
         } catch (Exception error) {
-            LOG.warn("Cannot process AI Call Flow request " + requestPath, error);
+            LOG.warn("Cannot process AI analysis request " + requestPath, error);
         }
     }
 
@@ -279,7 +279,7 @@ public final class CallFlowFileInboxService implements Disposable {
                     requestPath,
                     requestId,
                     "AMBIGUOUS_PROJECT",
-                    "More than one Android Studio project is open; close extra projects before sending a Call Flow"
+                    "More than one Android Studio project is open; close extra projects before sending an analysis request"
             );
             return;
         }
@@ -304,10 +304,10 @@ public final class CallFlowFileInboxService implements Disposable {
             return;
         }
 
-        CallFlowDeliveryParser.Envelope envelope;
+        AnalysisRequestParser.Envelope envelope;
         try {
-            envelope = CallFlowDeliveryParser.parseEnvelope(readUtf8Request(claimed));
-        } catch (CallFlowDeliveryParser.InvalidDeliveryException | IOException error) {
+            envelope = AnalysisRequestParser.parseEnvelope(readUtf8Request(claimed));
+        } catch (AnalysisRequestParser.InvalidAnalysisRequestException | IOException error) {
             finishRejected(claimed, requestId, "INVALID_DELIVERY", safeMessage(error));
             return;
         }
@@ -321,15 +321,15 @@ public final class CallFlowFileInboxService implements Disposable {
             return;
         }
         if (clock.millis() > envelope.delivery().expiresAtEpochMs()) {
-            finishRejected(claimed, requestId, "REQUEST_EXPIRED", "Call Flow request expired");
+            finishRejected(claimed, requestId, "REQUEST_EXPIRED", "Analysis request expired");
             return;
         }
 
-        CallFlowDeliveryParser.Request request;
+        AnalysisRequest request;
         try {
-            request = CallFlowDeliveryParser.parseCallFlow(envelope);
+            request = AnalysisRequestParser.parseRequest(envelope);
         } catch (IllegalArgumentException error) {
-            finishRejected(claimed, requestId, "INVALID_CALL_FLOW", safeMessage(error));
+            finishRejected(claimed, requestId, "INVALID_ANALYSIS_REQUEST", safeMessage(error));
             return;
         }
         if (!isOnlyTarget(target)) {
@@ -337,27 +337,27 @@ public final class CallFlowFileInboxService implements Disposable {
                     claimed,
                     requestId,
                     "AMBIGUOUS_PROJECT",
-                    "More than one Android Studio project is open; close extra projects before sending a Call Flow"
+                    "More than one Android Studio project is open; close extra projects before sending an analysis request"
             );
             return;
         }
 
         try {
-            target.receiver().receive(request.callFlow(), request.sourceJson())
-                    .whenComplete((storedPath, error) -> scheduleCompletion(() -> {
+            target.receiver().receive(request)
+                    .whenComplete((flow, error) -> scheduleCompletion(() -> {
                         if (error == null) {
-                            finishAccepted(claimed, request, storedPath);
+                            finishAccepted(claimed, request, flow);
                         } else {
                             finishRejected(
                                     claimed,
                                     requestId,
-                                    "LOAD_FAILED",
+                                    "ANALYSIS_FAILED",
                                     safeMessage(unwrap(error))
                             );
                         }
                     }));
         } catch (RuntimeException error) {
-            finishRejected(claimed, requestId, "LOAD_FAILED", safeMessage(error));
+            finishRejected(claimed, requestId, "ANALYSIS_FAILED", safeMessage(error));
         }
     }
 
@@ -403,23 +403,31 @@ public final class CallFlowFileInboxService implements Disposable {
 
     private void finishAccepted(
             Path claimed,
-            CallFlowDeliveryParser.Request request,
-            Path storedPath
+            AnalysisRequest request,
+            CallFlow flow
     ) {
         String requestId = request.delivery().requestId();
         try {
-            if (storedPath == null || !Files.isRegularFile(storedPath, LinkOption.NOFOLLOW_LINKS)) {
-                throw new IOException("Call Flow JSON was not persisted as a regular file");
+            if (flow == null) {
+                throw new IllegalArgumentException("Static analysis returned no Call Flow");
             }
             JsonObject receipt = baseReceipt(request.delivery(), "accepted");
-            receipt.addProperty("callFlowFile", storedPath.toAbsolutePath().normalize().toString());
-            receipt.addProperty("nodeCount", request.callFlow().nodes().size());
-            receipt.addProperty("edgeCount", request.callFlow().edges().size());
-            receipt.addProperty("entry", request.callFlow().entry());
+            receipt.addProperty("topic", request.topic());
+            JsonObject entry = new JsonObject();
+            entry.addProperty("path", request.entry().path());
+            entry.addProperty("line", request.entry().line());
+            entry.addProperty("column", request.entry().column());
+            entry.addProperty("symbol", request.entry().symbol());
+            receipt.add("entry", entry);
+            JsonObject generated = new JsonObject();
+            generated.addProperty("nodeCount", flow.nodes().size());
+            generated.addProperty("edgeCount", flow.edges().size());
+            generated.addProperty("entryNodeId", flow.entry());
+            receipt.add("generated", generated);
             writeReceipt(requestId, receipt);
             Files.deleteIfExists(claimed);
         } catch (Exception error) {
-            LOG.warn("Cannot finish accepted Call Flow request " + requestId, error);
+            LOG.warn("Cannot finish accepted analysis request " + requestId, error);
         } finally {
             inFlightClaims.remove(claimed);
         }
@@ -428,7 +436,7 @@ public final class CallFlowFileInboxService implements Disposable {
     private void finishRejected(Path claimed, String requestId, String code, String message) {
         try {
             JsonObject receipt = new JsonObject();
-            receipt.addProperty("version", CallFlowDeliveryParser.DELIVERY_VERSION);
+            receipt.addProperty("version", AnalysisRequestParser.DELIVERY_VERSION);
             receipt.addProperty("requestId", requestId);
             receipt.addProperty("status", "rejected");
             receipt.addProperty("completedAtEpochMs", clock.millis());
@@ -439,15 +447,15 @@ public final class CallFlowFileInboxService implements Disposable {
             writeReceipt(requestId, receipt);
             Files.deleteIfExists(claimed);
         } catch (Exception receiptError) {
-            LOG.warn("Cannot reject Call Flow request " + requestId, receiptError);
+            LOG.warn("Cannot reject analysis request " + requestId, receiptError);
         } finally {
             inFlightClaims.remove(claimed);
         }
     }
 
-    private JsonObject baseReceipt(CallFlowDeliveryParser.Delivery delivery, String status) {
+    private JsonObject baseReceipt(AnalysisRequest.Delivery delivery, String status) {
         JsonObject receipt = new JsonObject();
-        receipt.addProperty("version", CallFlowDeliveryParser.DELIVERY_VERSION);
+        receipt.addProperty("version", AnalysisRequestParser.DELIVERY_VERSION);
         receipt.addProperty("requestId", delivery.requestId());
         receipt.addProperty("status", status);
         receipt.addProperty("completedAtEpochMs", clock.millis());
@@ -489,7 +497,7 @@ public final class CallFlowFileInboxService implements Disposable {
             }
             return text.toString();
         } catch (CharacterCodingException error) {
-            throw new IOException("Call Flow request must be valid UTF-8", error);
+            throw new IOException("Analysis request must be valid UTF-8", error);
         }
     }
 
@@ -548,7 +556,7 @@ public final class CallFlowFileInboxService implements Disposable {
             return true;
         } catch (IOException | SecurityException error) {
             inFlightClaims.remove(claimed);
-            LOG.warn("Cannot timestamp Call Flow processing claim " + claimed, error);
+            LOG.warn("Cannot timestamp analysis request processing claim " + claimed, error);
             return false;
         }
     }
@@ -561,7 +569,7 @@ public final class CallFlowFileInboxService implements Disposable {
                     Files.setLastModifiedTime(claimed, FileTime.fromMillis(now));
                 }
             } catch (IOException | SecurityException error) {
-                LOG.warn("Cannot refresh Call Flow processing lease " + claimed, error);
+                LOG.warn("Cannot refresh analysis request processing lease " + claimed, error);
             }
         }
     }
@@ -571,7 +579,7 @@ public final class CallFlowFileInboxService implements Disposable {
         try (var paths = Files.list(processingDirectory)) {
             paths.filter(path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))
                     .filter(path -> !inFlightClaims.contains(path))
-                    .filter(path -> CallFlowDeliveryParser.requestIdFromClaimFileName(path) != null)
+                    .filter(path -> AnalysisRequestParser.requestIdFromClaimFileName(path) != null)
                     .filter(path -> {
                         long modified = lastModifiedSafely(path);
                         return modified != Long.MIN_VALUE
@@ -580,13 +588,13 @@ public final class CallFlowFileInboxService implements Disposable {
                     })
                     .forEach(this::restoreClaimSafely);
         } catch (IOException | SecurityException error) {
-            LOG.warn("Cannot recover stale Call Flow processing claims", error);
+            LOG.warn("Cannot recover stale analysis request processing claims", error);
         }
     }
 
     private void restoreClaimSafely(Path claimed) {
         try {
-            String requestId = CallFlowDeliveryParser.requestIdFromClaimFileName(claimed);
+            String requestId = AnalysisRequestParser.requestIdFromClaimFileName(claimed);
             if (requestId == null || !Files.isRegularFile(claimed, LinkOption.NOFOLLOW_LINKS)) {
                 return;
             }
@@ -608,7 +616,7 @@ public final class CallFlowFileInboxService implements Disposable {
                 Files.deleteIfExists(claimed);
             }
         } catch (IOException | SecurityException error) {
-            LOG.warn("Cannot restore Call Flow processing claim " + claimed, error);
+            LOG.warn("Cannot restore analysis request processing claim " + claimed, error);
         } finally {
             inFlightClaims.remove(claimed);
         }
@@ -630,16 +638,16 @@ public final class CallFlowFileInboxService implements Disposable {
         return message.length() <= 1_000 ? message : message.substring(0, 1_000);
     }
 
-    private record RegisteredTarget(CallFlowFileReceiver receiver) {
+    private record RegisteredTarget(AnalysisRequestReceiver receiver) {
     }
 
     static final class Registration implements AutoCloseable {
-        private final CallFlowFileInboxService service;
+        private final AnalysisRequestFileInboxService service;
         private final RegisteredTarget target;
         private final AtomicBoolean closed = new AtomicBoolean();
 
         private Registration(
-                CallFlowFileInboxService service,
+                AnalysisRequestFileInboxService service,
                 RegisteredTarget target
         ) {
             this.service = service;

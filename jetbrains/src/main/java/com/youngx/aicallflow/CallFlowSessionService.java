@@ -80,6 +80,38 @@ public final class CallFlowSessionService implements Disposable {
         return playback.current();
     }
 
+    public CallFlowPlayback.Visit currentVisit() {
+        return playback.currentVisit();
+    }
+
+    public List<CallFlowPlayback.Visit> currentPath() {
+        return playback.currentPath();
+    }
+
+    public int pathStep() {
+        return playback.pathStep();
+    }
+
+    public int visitedNodeCount() {
+        return playback.visitedNodeCount();
+    }
+
+    public int totalNodeCount() {
+        return playback.totalNodeCount();
+    }
+
+    public int unexploredEdgeCount() {
+        return playback.unexploredEdgeCount();
+    }
+
+    public boolean hasVisited(@NotNull String nodeId) {
+        return playback.hasVisited(nodeId);
+    }
+
+    public CallFlowPlayback.Visit latestVisit(@NotNull String nodeId) {
+        return playback.latestVisit(nodeId);
+    }
+
     public CallFlowNavigator.NavigationResult lastNavigationResult() {
         return lastNavigationResult;
     }
@@ -125,7 +157,33 @@ public final class CallFlowSessionService implements Disposable {
     }
 
     public void jumpTo(@NotNull String nodeId) {
-        runOnEdt(() -> navigateMovedNode(playback.jumpTo(nodeId)));
+        jumpTo(nodeId, true);
+    }
+
+    void jumpTo(@NotNull String nodeId, boolean focusEditor) {
+        runOnEdt(() -> navigateMovedNode(playback.jumpTo(nodeId), focusEditor));
+    }
+
+    /** Reveals a runtime event without changing static playback history or visited state. */
+    void revealRuntimeNode(@NotNull String nodeId) {
+        runOnEdt(() -> {
+            CallFlow flow = playback.flow();
+            if (flow == null) {
+                return;
+            }
+            CallFlowNode target = flow.nodes().stream()
+                    .filter(node -> Objects.equals(node.id(), nodeId))
+                    .findFirst()
+                    .orElse(null);
+            if (target == null) {
+                return;
+            }
+            try {
+                navigator.navigate(target, false);
+            } catch (RuntimeException error) {
+                LOG.warn("Cannot reveal live trace node " + nodeId, error);
+            }
+        });
     }
 
     public void addListener(@NotNull Listener listener, @NotNull Disposable parentDisposable) {
@@ -158,11 +216,15 @@ public final class CallFlowSessionService implements Disposable {
     }
 
     private void navigateMovedNode(CallFlowNode node) {
+        navigateMovedNode(node, true);
+    }
+
+    private void navigateMovedNode(CallFlowNode node, boolean focusEditor) {
         if (node == null || project.isDisposed()) {
             return;
         }
         try {
-            lastNavigationResult = navigator.navigate(node);
+            lastNavigationResult = navigator.navigate(node, focusEditor);
             lastNavigationError = null;
         } catch (RuntimeException error) {
             lastNavigationResult = null;
@@ -186,7 +248,7 @@ public final class CallFlowSessionService implements Disposable {
         if (application.isDispatchThread()) {
             task.run();
         } else {
-            application.invokeLater(task, ModalityState.any());
+            application.invokeLater(task, ModalityState.defaultModalityState());
         }
     }
 

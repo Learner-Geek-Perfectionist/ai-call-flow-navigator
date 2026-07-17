@@ -1,23 +1,47 @@
 # AI Call Flow Navigator
 
-AI Call Flow Navigator 把本地 AI 分析出的源码调用链加载到 Android Studio，并在原生 `Call Flow` 工具窗口中提供精确行列跳转、Previous/Forward 历史以及 Next、Into、Over、Out 导航。
+AI Call Flow Navigator 以显式 AI Skill 作为唯一分析入口。Codex 或 Claude Code 先在本地工作树中定位用户主题对应的源码入口，再通过 File IPC v3 向 Android Studio 发送一个精简的 `analysis-request`。插件使用 PSI/UAST 生成不可变静态 Call Flow，并把已有或后续 Android Studio Debugger 会话记录为独立的 Live `TraceRun` 叠加层。
+
+静态图回答“源码可能怎样执行”，Live Trace 回答“本次调试实际停在哪里”。两层共享源码导航和节点映射，但运行时事件不会改写静态图，也不会替代 Android Studio 原生 Debugger。
 
 GitHub 仓库：[Learner-Geek-Perfectionist/ai-call-flow-navigator](https://github.com/Learner-Geek-Perfectionist/ai-call-flow-navigator)
+
+## 最终架构
+
+```text
+Codex / Claude Code
+  → 显式调用 ai-call-flow-navigator Skill
+  → AI 定位 entry(path, line, column, symbol)
+  → publish_analysis_request.py
+  → file-ipc-v3 analysis-request
+  → Android Studio 当前 Project
+      → PSI/UAST 静态 Call Flow
+      → XDebugger Live TraceRun 叠加
+      → Call Flow 工具窗口与源码导航
+```
+
+职责边界：
+
+- AI 负责定位唯一入口并保留用户 `topic`。
+- Android Studio 使用当前 Project 的 PSI/UAST、索引和引用解析生成静态图。
+- Live Debugger 监听已有与后续 XDebugger session，记录 pause、resume、frame change 和 Step 请求，并把可匹配位置叠加到静态节点。
+- `TraceRun` 保存本次调试事件、节点命中次数与匹配置信度，并与静态播放历史分别维护。
+- 项目根由 Android Studio Project 管理，IPC 传递项目相对入口。
 
 ## 安装
 
 ### Android Studio 插件
 
-1. 打开项目的 [最新 GitHub Release](https://github.com/Learner-Geek-Perfectionist/ai-call-flow-navigator/releases/latest)，下载 `youngx-ai-call-flow-navigator-<version>.zip`。
+1. 打开项目的[最新 GitHub Release](https://github.com/Learner-Geek-Perfectionist/ai-call-flow-navigator/releases/latest)，下载 `youngx-ai-call-flow-navigator-<version>.zip`。
 2. 在 Android Studio 打开 `Settings/Preferences → Plugins`。
 3. 点击齿轮菜单，选择 `Install Plugin from Disk...`，选中下载的 ZIP。
-4. 按提示重启 Android Studio，然后打开需要阅读的源码项目。
+4. 按提示重启 Android Studio，然后打开需要分析的源码项目。
 
-插件安装后自动绑定 Android Studio 当前项目，并通过系统临时目录中的 `file-ipc-v2` 接收 Call Flow。
+插件 ID 为 `com.youngx.aicallflow`，Vendor 为 `YoungX`。
 
 ### Codex 与 Claude Code Skill
 
-仓库提供同一套 canonical `ai-call-flow-navigator` Skill 内容。操作说明使用中文，Call Flow、JSON、edge kind 等协议名称保留英文。安装脚本会为 Codex 和 Claude Code 写入各自的显式调用元数据，并同时安装到：
+仓库中的 `skills/ai-call-flow-navigator` 是两个 AI 客户端共用的 canonical Skill。安装脚本会复制完整 Skill，并为各客户端写入显式调用元数据：
 
 ```text
 ~/.agents/skills/ai-call-flow-navigator
@@ -40,101 +64,148 @@ cd ai-call-flow-navigator
 ./scripts/install-skill.ps1
 ```
 
-安装或更新 Skill 后新开一个 Codex/Claude Code 会话。在 Android Studio 实际打开的项目根目录中启动 AI；若是 monorepo 且 Android Studio 打开其中的 `android/` 子目录，终端便从该子目录启动。
+安装或更新 Skill 后，新开一个 Codex 或 Claude Code 会话。在 Android Studio 实际打开的项目根目录中启动 AI；如果 Android Studio 打开 monorepo 中的 `android/` 子目录，终端也应从该子目录启动。
 
-Skill 采用仅显式触发模式，只有主动输入命令时才运行：
+## 唯一使用入口
+
+Skill 不会隐式触发。只有用户主动输入以下命令时才运行：
 
 - Codex：`$ai-call-flow-navigator <topic>`
 - Claude Code：`/ai-call-flow-navigator <topic>`
 
-`<topic>` 用来描述入口、分析目标和范围。例如：
-
-- Codex：`$ai-call-flow-navigator 从 MainActivity.onCreate 开始分析调用链`
-- Claude Code：`/ai-call-flow-navigator 从 MainActivity.onCreate 开始分析调用链`
-
-两个入口共享同一套 Skill 规范、提示词和 `file-ipc-v2` 协议。Skill 投递器使用 Python 3.8+ 标准库，Windows 可通过 `py -3` 运行。原子投递支持标准 APFS、ext4、NTFS 临时文件系统。
-
-## 零配置 Call Flow
-
-插件自动绑定 Android Studio 当前打开的项目，并使用当前操作系统的本地临时目录交换 Call Flow。Skill 由上面的命令显式启动。
-
-正常使用只有三步：
-
-1. 安装 AI Call Flow Navigator 插件。
-2. 在 Android Studio 中打开源码项目。
-3. 在同一台电脑上显式调用 Skill，让 AI 分析当前项目并生成、投递 Call Flow JSON。
-
-插件自动使用 Android Studio 当前打开的项目。收到有效文件后，插件会打开 `Call Flow` 工具窗口并定位入口节点。
-
-插件 ID 是 `com.youngx.aicallflow`，Vendor 显示为 `YoungX`。
-
-### Call Flow 导航按钮
-
-`Previous`/`Forward` 浏览用户已经访问过的节点；`Next`/`Into`/`Over`/`Out` 沿着 AI 提交的调用链边移动。
-
-在左侧 `Flow nodes` 列表中选中节点后，按 `Enter` 可立即跳转到该节点的源码行列；鼠标双击节点也执行相同跳转。
-
-| 按钮 | 行为 | 与 Debug 的对应关系 |
-| --- | --- | --- |
-| `Previous` | 回到上一个实际访问过的节点；通过节点列表或其他导航按钮产生的访问都会记入历史 | 后退 |
-| `Forward` | 在执行过 `Previous` 后，沿访问历史回到较新的节点；选择新路径后会清空 Forward 历史 | 前进 |
-| `Next` | 显示当前节点的全部后续路径；只有一条时直接前进，多条时让用户选择分支 | 按 AI 调用链继续 |
-| `Into` | 只沿 `step_into` 边进入 AI 标记的函数实现节点 | Step Into |
-| `Over` | 只沿 `step_over` 边跳过当前调用的内部步骤 | Step Over |
-| `Out` | 只沿 `step_out` 边返回 AI 标记的调用方节点 | Step Out |
-
-按钮在存在相应历史或路径时自动启用。`Next` 还可以显示 `branch_true`/`branch_false`、`callback`、`async`、`return` 等路径；多个候选项的顺序和说明均来自 AI 提交的 Call Flow。
-
-例如在 `setContent` 节点，`Over` 可以直接前往 `onCreate` 返回节点；`Next` 则可以同时提供“跳过 Compose 内容”和“由 Compose 回调进入根 Composable”等候选路径。
-
-## AI 如何投递文件
-
-插件监听当前操作系统的本地临时交换目录：
+例如：
 
 ```text
-<system-temp>/youngx-ai-call-flow-navigator/file-ipc-v2/
+$ai-call-flow-navigator 分析登录按钮到首页的执行路径
+/ai-call-flow-navigator 分析 MainActivity.onCreate 到首屏渲染
+```
+
+`<topic>` 用来描述业务目标、入口线索或分析范围。AI 会检查源码并把主题解析到唯一 Java/Kotlin 声明；仍有多个合理入口时，AI 会先询问用户，不会猜测。
+
+一次完整使用流程：
+
+1. 在 Android Studio 中打开源码项目，并确保插件已启用。
+2. 在同一项目根目录显式调用 Skill。
+3. AI 定位入口并投递 `analysis-request`。
+4. 插件在索引可用后生成静态 Call Flow，打开工具窗口并定位入口。
+5. 如需运行时轨迹，使用 Android Studio 正常启动或连接 Debugger；插件会自动绑定合适的 XDebugger session，并开始记录当前 `TraceRun`。
+
+## 静态 Call Flow
+
+插件从请求的 `entry.path`、1-based `line`/`column` 和 source-level `symbol` 解析入口，再使用 PSI/UAST 生成项目代码范围内的静态图。
+
+静态图包含：
+
+- 精确源码位置与符号导航。
+- 项目内函数调用、调用方 continuation、分支、返回和 callback。
+- 可以进入源码的调用对应 `Into`，同一调用方 continuation 对应 `Over`，正常出口对应 `Out`。
+- `Into` 只指向能够解析到的项目源码声明或 callback body。
+- `ComponentActivity.setContent(content)`、`MaterialTheme(content)` 和 `Scaffold(content)` 等 Compose callback 的 lambda 入口。
+
+静态图描述代码中的可能路径；本次运行实际经过的路径由 Live Trace 展示。
+
+### Static 控件
+
+| 控件 | 行为 |
+| --- | --- |
+| `Previous` | 回到上一个实际访问过的静态节点 |
+| `Forward` | 执行 `Previous` 后沿静态访问历史前进 |
+| `Next` | 查看当前节点的全部静态出边 |
+| `Into` | 沿 `step_into` 进入项目源码或 callback body |
+| `Over` | 沿 `step_over` 跳到调用方 continuation |
+| `Out` | 沿 `step_out` 返回调用方 |
+
+节点列表支持方向键选择、`Enter` 导航和鼠标双击。Static 历史只表示用户浏览静态图的顺序，不控制正在运行的程序。
+
+## Live Debugger TraceRun
+
+静态图加载后，插件进入等待 Debugger session 的状态。用户通过 Android Studio 的标准 Run/Debug 配置启动或连接应用，插件随后自动绑定会话。
+
+绑定 session 后，Live 层记录：
+
+- session attach、stop、pause 与 resume。
+- 当前 stack frame/source position 变化。
+- 从工具窗口发出的 Pause、Resume、Step Into、Step Over 与 Step Out 请求。
+- 运行时位置映射到静态节点后的命中次数、edge 语义和匹配置信度。
+
+每次加载新的静态图都会创建新的 `TraceRun`。静态 `CallFlow` 保持不变，Live 事件作为叠加层展示；没有可信静态匹配的位置仍可保留为运行时样本。
+
+### Live 控件
+
+| 控件 | 行为 |
+| --- | --- |
+| `Previous Event` | 查看上一个已记录的 pause 样本，不执行反向调试 |
+| `Next Event` | 查看下一个已记录的 pause 样本，不恢复程序 |
+| `Pause` | 请求当前绑定的 Debugger session 暂停 |
+| `Resume` | 恢复当前绑定的 Debugger session |
+| `Step Into` | 调用 Android Studio XDebugger Step Into |
+| `Step Over` | 调用 Android Studio XDebugger Step Over |
+| `Step Out` | 调用 Android Studio XDebugger Step Out |
+
+Live 的 Previous/Next 移动 TraceRun 查看光标；Static 的 Previous/Forward 管理静态浏览历史，程序执行方向继续由 Android Studio Debugger 控制。
+
+## File IPC v3
+
+Skill 自带的 `publish_analysis_request.py` 使用 Python 3.8+ 标准库。它验证入口相对路径、源码行列和精确 schema，注入 `_delivery.version = "3.0"`，再写入当前用户的系统临时目录：
+
+请求与回执按完整 UTF-8 JSON 读取，协议支持任意文件大小，实际容量由本机存储与进程内存决定。
+
+```text
+<system-temp>/youngx-ai-call-flow-navigator/file-ipc-v3/
   .consumer.lock
   inbox/
   processing/
   receipts/
 ```
 
-AI 生成 Call Flow 语义和项目相对 `location.path`。配套 Skill 的 `publish_call_flow.py` 会校验源码位置、自动添加请求 ID 与有效期，并按文件协议 `2.0` 投递；Call Flow 顶层内容 `version` 仍是 `1.0`。发布器先在 `inbox` 中完整写入隐藏临时文件 `.request-<UUID>.tmp`，刷新后以 no-replace 语义原子创建 `request-<UUID>.json`。插件处理发布完成的 `.json`，并把请求绑定到当前 Android Studio Project 的 canonical root。
+业务 payload 只有一种：
 
-交换目录使用固定路径，并校验 owner、权限和文件类型。插件通过 `.consumer.lock` 协调 Android Studio 消费进程。
-
-插件认领请求后会把文件移入 `processing`，校验 UTF-8、投递信息和 Call Flow 结构，然后把通过校验的原始 JSON 持久化到 IDE JVM 的系统临时目录并加载工具窗口。最后在 `receipts/receipt-<UUID>.json` 写入 `accepted` 或 `rejected` 回执。AI 应等待同一 `requestId` 的回执。
-
-`<system-temp>` 来自 Android Studio JVM 的 `java.io.tmpdir`：macOS 通常与 `$TMPDIR` 一致，Linux 通常为 `/tmp`，Windows 通常与 `%TEMP%` 一致；显式设置 `-Djava.io.tmpdir` 时，AI 使用相同目录。完整格式见 [Call Flow File Protocol 2.0](docs/call-flow-protocol.md)。
-
-### 已接受 JSON 的位置
-
-插件将校验通过的 AI JSON 原样保存在 IDE JVM 的 `java.io.tmpdir` 下：macOS 通常对应 `$TMPDIR`，Linux 通常对应 `/tmp`，Windows 对应 `%TEMP%`；显式配置的 `-Djava.io.tmpdir` 优先。文件布局为：
-
-```text
-<system-temp>/youngx-ai-call-flow-navigator-archive[-user[-<uid>]-<random>]/call-flows/
-  project-<base64url-sha256-project-root>/call-flow-<time>-<random>.json
+```json
+{
+  "version": "1.0",
+  "type": "analysis-request",
+  "topic": "分析登录按钮到首页的执行路径",
+  "entry": {
+    "path": "app/src/main/java/com/example/LoginFragment.kt",
+    "line": 42,
+    "column": 5,
+    "symbol": "com.example.LoginFragment.onLoginClick"
+  },
+  "strategy": {
+    "mode": "static-and-live",
+    "scope": "project-code"
+  }
+}
 ```
 
-POSIX 系统使用当前用户私有的 `0700/0600` 权限；Windows 校验 owner，并使用用户 Profile 与 `%TEMP%` 的系统 ACL。每个项目以最近 50 条为保留目标。交换目录与落盘 JSON 都在项目目录之外，源码工作树保持整洁。
+Android Studio Project 提供项目根；发布器在本机使用当前工作目录验证 `entry.path`。多个已打开项目同时匹配入口时，回执状态为 `AMBIGUOUS_PROJECT`。
+
+发布器使用私有临时文件、exclusive-create 和 hard-link no-replace 语义原子发布 `request-<UUID>.json`。插件认领后生成静态图，并写入同一 `requestId` 的 `accepted` 或 `rejected` 回执。成功回执包含生成的节点数、边数和入口节点 ID。
+
+完整格式、安全校验、超时与错误码见 [Analysis Request File Protocol 3.0](docs/call-flow-protocol.md)。
+
+## 本地数据安全
+
+- AI、发布器与 Android Studio 在同一台机器、同一操作系统用户下通信。
+- POSIX 交换目录使用 `0700`，请求与回执使用 `0600`；Windows 校验 owner，并使用当前用户临时目录 ACL。
+- 交换文件位于源码仓库和 `.idea` 之外。
+- 请求包含用户 topic、项目相对源码路径和符号，应按项目敏感数据管理。
+- IPC 使用项目相对入口和系统临时文件完成本机通信。
 
 ## 项目结构
 
 ```text
 ai-call-flow-navigator/
-  jetbrains/   Android Studio / JetBrains 插件，提供 Call Flow 和源码跳转
-  skills/      Codex 与 Claude Code 共用的 canonical Skill 内容
+  jetbrains/   Android Studio 插件、PSI/UAST 静态图与 Live TraceRun
+  skills/      Codex 与 Claude Code 共用的 canonical Skill
   scripts/     Skill 安装脚本
   tests/       Skill 安装器与 Python 发布器回归测试
+  docs/        File IPC v3 analysis-request 协议
 ```
-
-## 本地数据安全
-
-AI 与 Android Studio 在同一台机器上通过当前用户的系统临时目录交换文件。交换目录、请求、回执与落盘 JSON 使用当前操作系统用户权限。Call Flow 可能包含源码路径、符号名和 AI 摘要，按项目敏感数据管理即可。
 
 ## 构建
 
-JetBrains 插件构建需要 JDK 21 和 Android Studio。脚本识别 macOS、Linux、Windows 的常见安装目录，也可通过 `ANDROID_STUDIO_PATH` 或 `-PandroidStudioPath=<Android Studio IDE home>` 指定 IDE 位置。
+JetBrains 插件构建需要 JDK 21 和 Android Studio。脚本识别 macOS、Linux、Windows 的常见安装目录，也可通过 `ANDROID_STUDIO_PATH` 或 `-PandroidStudioPath=<Android Studio IDE home>` 指定。
 
 ```bash
 python3 -m unittest discover -s tests -v

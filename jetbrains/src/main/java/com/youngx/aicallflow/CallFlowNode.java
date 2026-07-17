@@ -4,6 +4,15 @@ public record CallFlowNode(
         String id,
         NodeKind kind,
         CallFlowLocation location,
-        String summary
+        String summary,
+        CallFlowExecution execution
 ) {
+    public CallFlowNode(
+            String id,
+            NodeKind kind,
+            CallFlowLocation location,
+            String summary
+    ) {
+        this(id, kind, location, summary, null);
+    }
 }

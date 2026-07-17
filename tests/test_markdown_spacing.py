@@ -108,14 +108,26 @@ def has_suspicious_soft_wrap(line: str, next_line: str) -> bool:
 
 def repository_markdown_files():
     result = subprocess.run(
-        ["git", "ls-files", "--", "*.md"],
+        [
+            "git",
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            "*.md",
+        ],
         cwd=REPOSITORY_ROOT,
         text=True,
         capture_output=True,
         check=False,
     )
     if result.returncode == 0:
-        return [REPOSITORY_ROOT / line for line in result.stdout.splitlines()]
+        return [
+            REPOSITORY_ROOT / line
+            for line in result.stdout.splitlines()
+            if (REPOSITORY_ROOT / line).is_file()
+        ]
     return sorted(
         path
         for path in REPOSITORY_ROOT.rglob("*.md")

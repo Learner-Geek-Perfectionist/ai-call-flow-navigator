@@ -4,15 +4,25 @@
     <vendor url="https://github.com/Learner-Geek-Perfectionist/ai-call-flow-navigator">YoungX</vendor>
 
     <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.xdebugger</depends>
+    <depends>com.intellij.java</depends>
+    <depends>org.jetbrains.kotlin</depends>
+
+    <extensions defaultExtensionNs="org.jetbrains.kotlin">
+        <!--suppress PluginXmlValidity -->
+        <supportsKotlinPluginMode supportsK2="true"/>
+    </extensions>
 
     <extensions defaultExtensionNs="com.intellij">
-        <applicationService serviceImplementation="com.youngx.aicallflow.CallFlowFileInboxService"/>
+        <applicationService serviceImplementation="com.youngx.aicallflow.AnalysisRequestFileInboxService"/>
         <projectService serviceImplementation="com.youngx.aicallflow.AiCallFlowProjectService"/>
         <projectService serviceImplementation="com.youngx.aicallflow.CallFlowSessionService"/>
+        <projectService serviceImplementation="com.youngx.aicallflow.StaticCallFlowGenerationService"/>
         <postStartupActivity implementation="com.youngx.aicallflow.AiCallFlowStartupActivity"/>
         <toolWindow id="Call Flow"
                     anchor="right"
                     canCloseContents="false"
                     factoryClass="com.youngx.aicallflow.CallFlowToolWindowFactory"/>
     </extensions>
+
 </idea-plugin>

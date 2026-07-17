@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and atomically deliver a semantic Call Flow to Android Studio."""
+"""Validate and atomically deliver one analysis request to Android Studio."""
 
 import argparse
 import json
@@ -15,20 +15,15 @@ import uuid
 from pathlib import Path
 
 
-CALL_FLOW_VERSION = "1.0"
-DELIVERY_VERSION = "2.0"
+REQUEST_VERSION = "1.0"
+REQUEST_TYPE = "analysis-request"
+DELIVERY_VERSION = "3.0"
+STRATEGY_MODE = "static-and-live"
+STRATEGY_SCOPE = "project-code"
 CHANNEL_DIRECTORY = "youngx-ai-call-flow-navigator"
-PROTOCOL_DIRECTORY = "file-ipc-v2"
-MAX_RECEIPT_BYTES = 1024 * 1024
+PROTOCOL_DIRECTORY = "file-ipc-v3"
 MAX_INT32 = 2_147_483_647
 
-NODE_KINDS = {
-    "entry", "declaration", "call", "branch", "return", "async", "callback", "note"
-}
-EDGE_KINDS = {
-    "next", "step_into", "step_over", "step_out", "branch_true", "branch_false",
-    "return", "async", "callback"
-}
 WINDOWS_ABSOLUTE_PATH = re.compile(r"^[A-Za-z]:[/\\]")
 URI_LIKE_PATH = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 
@@ -40,15 +35,18 @@ class PublisherError(Exception):
 def _parser():
     parser = argparse.ArgumentParser(
         description=(
-            "Validate a Call Flow content JSON file, add delivery metadata, and send it "
-            "to the local AI Call Flow Navigator Android Studio plugin."
+            "Validate an AI Call Flow analysis request, add delivery metadata, and "
+            "send it to the local Android Studio plugin."
         )
     )
-    parser.add_argument("flow_json", help="UTF-8 Call Flow content JSON without _delivery")
+    parser.add_argument(
+        "request_json",
+        help="UTF-8 analysis request JSON without _delivery",
+    )
     parser.add_argument(
         "--temp-root",
         help=(
-            "Android Studio's java.io.tmpdir. Omit for the operating system default; "
+            "Android Studio's java.io.tmpdir. Omit for operating-system defaults; "
             "use only when Android Studio was launched with a custom value."
         ),
     )
@@ -73,8 +71,8 @@ def _parser():
         "--delete-input",
         action="store_true",
         help=(
-            "securely delete the semantic input after reading; requires a private regular file "
-            "inside the system temporary directory and outside the source project"
+            "delete the input after reading; requires a private regular file in a "
+            "recognized system temporary directory and outside the source project"
         ),
     )
     return parser
@@ -93,9 +91,7 @@ def _object_without_duplicates(pairs):
     return result
 
 
-def _parse_json_bytes(data, label, maximum=None):
-    if maximum is not None and len(data) > maximum:
-        raise PublisherError("%s is larger than %d bytes" % (label, maximum))
+def _parse_json_bytes(data, label):
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as error:
@@ -122,14 +118,19 @@ def _expect_object(value, name):
     return value
 
 
-def _expect_exact_fields(value, name, required, optional=()):
+def _expect_exact_fields(value, name, required):
     keys = set(value)
     missing = set(required) - keys
-    unknown = keys - set(required) - set(optional)
+    unknown = keys - set(required)
     if missing:
-        raise PublisherError("%s is missing: %s" % (name, ", ".join(sorted(missing))))
+        raise PublisherError(
+            "%s is missing: %s" % (name, ", ".join(sorted(missing)))
+        )
     if unknown:
-        raise PublisherError("%s has unsupported fields: %s" % (name, ", ".join(sorted(unknown))))
+        raise PublisherError(
+            "%s has unsupported fields: %s"
+            % (name, ", ".join(sorted(unknown)))
+        )
 
 
 def _is_iso_control(character):
@@ -156,18 +157,6 @@ def _text(value, name, maximum, identifier=False):
     return value
 
 
-def _enum(value, name, supported):
-    if not isinstance(value, str) or value not in supported:
-        raise PublisherError("%s is not supported: %r" % (name, value))
-    return value
-
-
-def _optional_text(container, field, name, maximum):
-    if field not in container:
-        return None
-    return _text(container[field], name, maximum)
-
-
 def _positive_int(value, name):
     if isinstance(value, bool) or not isinstance(value, int):
         raise PublisherError("%s must be an integer" % name)
@@ -176,194 +165,121 @@ def _positive_int(value, name):
     return value
 
 
+def _non_negative_int(value, name):
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise PublisherError("%s must be a non-negative integer" % name)
+    return value
+
+
 def _validate_relative_path(value, name):
-    path = _text(value, name, 4096)
-    if path != path.strip():
-        raise PublisherError("%s must not have leading or trailing whitespace" % name)
+    path = _text(value, name, 4096, identifier=True)
     if (
         path.startswith("/")
         or path.startswith("\\")
         or WINDOWS_ABSOLUTE_PATH.match(path)
         or URI_LIKE_PATH.match(path)
     ):
-        raise PublisherError("%s must be a repository-relative path" % name)
+        raise PublisherError("%s must be a project-relative path" % name)
     if "\\" in path:
         raise PublisherError("%s must use forward slashes" % name)
-    if any(_is_iso_control(character) for character in path):
-        raise PublisherError("%s must not contain control characters" % name)
     segments = path.split("/")
     if any(segment in ("", ".", "..") for segment in segments):
-        raise PublisherError("%s must be a normalized repository-relative path" % name)
+        raise PublisherError(
+            "%s must be a normalized project-relative path" % name
+        )
     return path
 
 
-def _validate_location(value, name):
-    location = _expect_object(value, name)
+def _validate_entry(value, name="analysis request.entry"):
+    entry = _expect_object(value, name)
+    _expect_exact_fields(entry, name, ("path", "line", "column", "symbol"))
+    _validate_relative_path(entry["path"], name + ".path")
+    _positive_int(entry["line"], name + ".line")
+    _positive_int(entry["column"], name + ".column")
+    _text(entry["symbol"], name + ".symbol", 512, identifier=True)
+    return entry
+
+
+def _validate_analysis_request(value):
+    request = _expect_object(value, "analysis request")
     _expect_exact_fields(
-        location,
-        name,
-        ("path", "line", "column"),
-        ("endLine", "endColumn", "symbol", "anchorText"),
+        request,
+        "analysis request",
+        ("version", "type", "topic", "entry", "strategy"),
     )
-    _validate_relative_path(location["path"], name + ".path")
-    line = _positive_int(location["line"], name + ".line")
-    column = _positive_int(location["column"], name + ".column")
+    if request["version"] != REQUEST_VERSION:
+        raise PublisherError(
+            'analysis request.version must be "%s"' % REQUEST_VERSION
+        )
+    if request["type"] != REQUEST_TYPE:
+        raise PublisherError(
+            'analysis request.type must be "%s"' % REQUEST_TYPE
+        )
+    _text(request["topic"], "analysis request.topic", 16384)
+    _validate_entry(request["entry"])
 
-    has_end_line = "endLine" in location
-    has_end_column = "endColumn" in location
-    if has_end_line != has_end_column:
-        raise PublisherError("%s.endLine and %s.endColumn must be provided together" % (name, name))
-    if has_end_line:
-        end_line = _positive_int(location["endLine"], name + ".endLine")
-        end_column = _positive_int(location["endColumn"], name + ".endColumn")
-        if (end_line, end_column) < (line, column):
-            raise PublisherError("%s end position must not precede its start" % name)
-
-    _optional_text(location, "symbol", name + ".symbol", 512)
-    _optional_text(location, "anchorText", name + ".anchorText", 16384)
-    return location
-
-
-def _validate_call_flow(value):
-    flow = _expect_object(value, "Call Flow")
-    if "_delivery" in flow:
-        raise PublisherError("Call Flow content must not contain _delivery; the publisher generates it")
+    strategy = _expect_object(request["strategy"], "analysis request.strategy")
     _expect_exact_fields(
-        flow,
-        "Call Flow",
-        ("version", "title", "nodes", "edges", "entry"),
+        strategy,
+        "analysis request.strategy",
+        ("mode", "scope"),
     )
-    if flow["version"] != CALL_FLOW_VERSION:
-        raise PublisherError('Call Flow.version must be "%s"' % CALL_FLOW_VERSION)
-    _text(flow["title"], "Call Flow.title", 512)
-
-    nodes = flow["nodes"]
-    if not isinstance(nodes, list) or not nodes:
-        raise PublisherError("Call Flow.nodes must be a non-empty array")
-    if len(nodes) > 10_000:
-        raise PublisherError("Call Flow.nodes must contain at most 10000 items")
-
-    identifiers = set()
-    for index, raw_node in enumerate(nodes):
-        name = "Call Flow.nodes[%d]" % index
-        node = _expect_object(raw_node, name)
-        _expect_exact_fields(node, name, ("id", "kind", "location", "summary"))
-        identifier = _text(node["id"], name + ".id", 256, identifier=True)
-        if identifier in identifiers:
-            raise PublisherError("duplicate node id: %s" % identifier)
-        identifiers.add(identifier)
-        _enum(node["kind"], name + ".kind", NODE_KINDS)
-        _validate_location(node["location"], name + ".location")
-        _text(node["summary"], name + ".summary", 16384)
-
-    edges = flow["edges"]
-    if not isinstance(edges, list):
-        raise PublisherError("Call Flow.edges must be an array")
-    if len(edges) > 50_000:
-        raise PublisherError("Call Flow.edges must contain at most 50000 items")
-    for index, raw_edge in enumerate(edges):
-        name = "Call Flow.edges[%d]" % index
-        edge = _expect_object(raw_edge, name)
-        _expect_exact_fields(edge, name, ("from", "to", "kind"), ("label",))
-        source = _text(edge["from"], name + ".from", 256, identifier=True)
-        target = _text(edge["to"], name + ".to", 256, identifier=True)
-        if source not in identifiers:
-            raise PublisherError("%s.from references an unknown node: %s" % (name, source))
-        if target not in identifiers:
-            raise PublisherError("%s.to references an unknown node: %s" % (name, target))
-        _enum(edge["kind"], name + ".kind", EDGE_KINDS)
-        _optional_text(edge, "label", name + ".label", 512)
-
-    entry = _text(flow["entry"], "Call Flow.entry", 256, identifier=True)
-    if entry not in identifiers:
-        raise PublisherError("Call Flow.entry references an unknown node: %s" % entry)
-    return flow
+    if strategy["mode"] != STRATEGY_MODE:
+        raise PublisherError(
+            'analysis request.strategy.mode must be "%s"' % STRATEGY_MODE
+        )
+    if strategy["scope"] != STRATEGY_SCOPE:
+        raise PublisherError(
+            'analysis request.strategy.scope must be "%s"' % STRATEGY_SCOPE
+        )
+    return request
 
 
 def _source_lines(path):
     try:
-        data = path.read_bytes()
-        text = data.decode("utf-8-sig")
-    except OSError as error:
-        raise PublisherError("cannot read source file %s: %s" % (path, error))
+        source = path.read_bytes().decode("utf-8")
     except UnicodeDecodeError as error:
-        raise PublisherError("source file is not UTF-8: %s (%s)" % (path, error))
-    return text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        raise PublisherError("entry source is not valid UTF-8: %s" % error)
+    except OSError as error:
+        raise PublisherError("cannot read entry source: %s" % error)
+    return source.replace("\r\n", "\n").replace("\r", "\n").split("\n")
 
 
-def _validate_coordinate(lines, line, column, name):
-    if line > len(lines):
-        raise PublisherError("%s line %d is outside a %d-line source file" % (name, line, len(lines)))
-    maximum_column = _utf16_length(lines[line - 1]) + 1
-    if column > maximum_column:
-        raise PublisherError(
-            "%s column %d is outside source line %d (maximum %d)"
-            % (name, column, line, maximum_column)
-        )
-
-
-def _utf16_column(line, codepoint_index):
-    return _utf16_length(line[:codepoint_index]) + 1
-
-
-def _validate_sources(flow, source_root):
+def _validate_entry_source(request, source_root):
     try:
         real_root = source_root.resolve(strict=True)
     except OSError as error:
-        raise PublisherError("cannot resolve the current source root: %s" % error)
+        raise PublisherError("cannot resolve the current project root: %s" % error)
     if not real_root.is_dir():
-        raise PublisherError("current source root is not a directory: %s" % real_root)
+        raise PublisherError("current project root is not a directory: %s" % real_root)
 
-    cache = {}
-    for index, node in enumerate(flow["nodes"]):
-        location = node["location"]
-        relative = location["path"]
-        name = "Call Flow.nodes[%d].location" % index
-        candidate = real_root.joinpath(*relative.split("/"))
-        try:
-            real_candidate = candidate.resolve(strict=True)
-            real_candidate.relative_to(real_root)
-        except (OSError, ValueError) as error:
-            raise PublisherError("%s.path is not a source file inside the current repository: %s" % (name, relative)) from error
-        if not real_candidate.is_file():
-            raise PublisherError("%s.path is not a regular source file: %s" % (name, relative))
+    entry = request["entry"]
+    relative = entry["path"]
+    candidate = real_root.joinpath(*relative.split("/"))
+    try:
+        real_candidate = candidate.resolve(strict=True)
+        real_candidate.relative_to(real_root)
+    except (OSError, ValueError) as error:
+        raise PublisherError(
+            "analysis request.entry.path is not a source file inside the current project: %s"
+            % relative
+        ) from error
+    if not real_candidate.is_file():
+        raise PublisherError(
+            "analysis request.entry.path is not a regular source file: %s" % relative
+        )
 
-        key = str(real_candidate)
-        lines = cache.get(key)
-        if lines is None:
-            lines = _source_lines(real_candidate)
-            cache[key] = lines
-
-        line = location["line"]
-        column = location["column"]
-        _validate_coordinate(lines, line, column, name)
-        if "endLine" in location:
-            _validate_coordinate(lines, location["endLine"], location["endColumn"], name + " end")
-
-        anchor = location.get("anchorText")
-        if anchor is not None:
-            if "\n" in anchor or "\r" in anchor:
-                raise PublisherError("%s.anchorText must stay on one source line" % name)
-            first = max(0, line - 1 - 20)
-            last = min(len(lines), line + 20)
-            matches = []
-            for line_index in range(first, last):
-                offset = 0
-                while True:
-                    found = lines[line_index].find(anchor, offset)
-                    if found < 0:
-                        break
-                    matches.append((line_index + 1, _utf16_column(lines[line_index], found)))
-                    offset = found + 1
-            if not matches:
-                raise PublisherError("%s.anchorText was not found within 20 lines" % name)
-            if len(matches) > 1:
-                raise PublisherError("%s.anchorText is ambiguous within 20 lines" % name)
-            if matches[0] != (line, column):
-                raise PublisherError(
-                    "%s coordinates are %d:%d but anchorText starts at %d:%d"
-                    % (name, line, column, matches[0][0], matches[0][1])
-                )
+    lines = _source_lines(real_candidate)
+    line = entry["line"]
+    if line > len(lines):
+        raise PublisherError(
+            "analysis request.entry.line exceeds the source line count"
+        )
+    maximum_column = _utf16_length(lines[line - 1]) + 1
+    if entry["column"] > maximum_column:
+        raise PublisherError(
+            "analysis request.entry.column exceeds the UTF-16 source line length"
+        )
 
 
 def _current_uid():
@@ -404,7 +320,7 @@ def _existing_private_file(path, label):
     return info
 
 
-def _read_private_file(path, label, initial, maximum=None):
+def _read_private_file(path, label, initial):
     flags = os.O_RDONLY
     if hasattr(os, "O_BINARY"):
         flags |= os.O_BINARY
@@ -424,7 +340,7 @@ def _read_private_file(path, label, initial, maximum=None):
             raise PublisherError("%s changed before it could be read" % label)
         with os.fdopen(descriptor, "rb") as input_file:
             descriptor = None
-            return input_file.read() if maximum is None else input_file.read(maximum + 1)
+            return input_file.read()
     except OSError as error:
         raise PublisherError("cannot securely read %s: %s" % (label, error))
     finally:
@@ -492,39 +408,43 @@ def _read_input(path, delete_input, temp_root_argument=None):
             with path.open("rb") as input_file:
                 return input_file.read()
         except OSError as error:
-            raise PublisherError("cannot read Call Flow JSON: %s" % error)
+            raise PublisherError("cannot read analysis request JSON: %s" % error)
 
     if not path.is_absolute():
         raise PublisherError("--delete-input requires an absolute secure temporary-file path")
 
-    label = "temporary Call Flow JSON"
+    label = "temporary analysis request JSON"
     initial = _existing_private_file(path, label)
     if initial.st_nlink != 1:
-        raise PublisherError("temporary Call Flow JSON must not have hard links")
+        raise PublisherError("temporary analysis request JSON must not have hard links")
     try:
         real_input = path.resolve(strict=True)
         real_source = Path.cwd().resolve(strict=True)
     except OSError as error:
-        raise PublisherError("cannot resolve the temporary Call Flow JSON: %s" % error)
+        raise PublisherError("cannot resolve the temporary analysis request JSON: %s" % error)
+
     temporary_roots = _temporary_root_candidates()
     if temp_root_argument:
         for root in _temporary_root_candidates(temp_root_argument):
             if root not in temporary_roots:
                 temporary_roots.append(root)
     if not any(_is_within(real_input, root) for root in temporary_roots):
-        raise PublisherError("--delete-input only deletes files inside a recognized system temporary directory")
+        raise PublisherError(
+            "--delete-input only deletes files inside a recognized system temporary directory"
+        )
     if _is_within(real_input, real_source):
         raise PublisherError("--delete-input refuses to delete a file inside the source project")
 
     data = _read_private_file(path, label, initial)
-
     current = _lstat(path, label)
     if (current.st_dev, current.st_ino) != (initial.st_dev, initial.st_ino):
-        raise PublisherError("temporary Call Flow JSON changed before it could be deleted")
+        raise PublisherError("temporary analysis request JSON changed before deletion")
     try:
         path.unlink()
     except OSError as error:
-        raise PublisherError("Call Flow JSON was read but could not be deleted: %s" % error)
+        raise PublisherError(
+            "analysis request JSON was read but could not be deleted: %s" % error
+        )
     return data
 
 
@@ -535,11 +455,15 @@ def _exchange_at_root(temp_root):
     )
     protocol = _existing_private_directory(
         channel / PROTOCOL_DIRECTORY,
-        "AI Call Flow file-ipc-v2 directory",
+        "AI Call Flow file-ipc-v3 directory",
     )
     inbox = _existing_private_directory(protocol / "inbox", "AI Call Flow inbox")
-    _existing_private_directory(protocol / "processing", "AI Call Flow processing directory")
-    receipts = _existing_private_directory(protocol / "receipts", "AI Call Flow receipts directory")
+    _existing_private_directory(
+        protocol / "processing", "AI Call Flow processing directory"
+    )
+    receipts = _existing_private_directory(
+        protocol / "receipts", "AI Call Flow receipts directory"
+    )
     _existing_private_file(protocol / ".consumer.lock", "AI Call Flow consumer lock")
     return inbox, receipts
 
@@ -567,14 +491,14 @@ def _exchange_directories(temp_root_argument):
     if len(matches) > 1:
         roots = ", ".join(str(root) for root, _ in matches)
         raise PublisherError(
-            "multiple AI Call Flow inboxes were found (%s); pass the Android Studio java.io.tmpdir "
-            "with --temp-root" % roots
+            "multiple AI Call Flow inboxes were found (%s); pass Android Studio's "
+            "java.io.tmpdir with --temp-root" % roots
         )
     checked = ", ".join(str(path) for path in candidates) or "no usable temporary directories"
     detail = (" Invalid candidates: " + "; ".join(failures)) if failures else ""
     raise PublisherError(
-        "AI Call Flow inbox was not found. Open the project in Android Studio with the plugin "
-        "enabled. Checked: %s.%s" % (checked, detail)
+        "AI Call Flow file-ipc-v3 inbox was not found. Open the project in Android Studio "
+        "with the plugin enabled. Checked: %s.%s" % (checked, detail)
     )
 
 
@@ -609,66 +533,108 @@ def _publish_request(inbox, request_id, payload):
             output.write(payload)
             output.flush()
             os.fsync(output.fileno())
-
         try:
             os.link(str(temporary), str(final), follow_symlinks=False)
         except FileExistsError as error:
-            raise PublisherError("request destination already exists; refusing to overwrite it") from error
+            raise PublisherError(
+                "request destination already exists; refusing to overwrite it"
+            ) from error
         except OSError as error:
             raise PublisherError(
-                "cannot atomically publish without overwriting; the inbox filesystem must support hard links: %s"
-                % error
+                "cannot atomically publish without overwriting; the inbox filesystem "
+                "must support hard links: %s" % error
             )
         try:
             temporary.unlink()
         except OSError as error:
             print(
-                "warning: request was published but its temporary hard link could not be removed: %s"
-                % error,
+                "warning: request was published but its temporary hard link could not "
+                "be removed: %s" % error,
                 file=sys.stderr,
             )
         _directory_fsync(inbox)
         return final
     except FileExistsError as error:
-        raise PublisherError("temporary request already exists; refusing to overwrite it") from error
+        raise PublisherError(
+            "temporary request already exists; refusing to overwrite it"
+        ) from error
     finally:
         if descriptor is not None:
             os.close(descriptor)
         try:
             temporary.unlink()
-        except FileNotFoundError:
+        except (FileNotFoundError, OSError):
             pass
-        except OSError:
-            pass
+
+
+def _validate_receipt_entry(value):
+    return _validate_entry(value, "plugin receipt.entry")
 
 
 def _read_receipt(path, request_id):
     label = "AI Call Flow receipt"
     initial = _existing_private_file(path, label)
-    data = _read_private_file(path, label, initial, MAX_RECEIPT_BYTES)
-    receipt = _expect_object(_parse_json_bytes(data, "plugin receipt", MAX_RECEIPT_BYTES), "plugin receipt")
+    data = _read_private_file(path, label, initial)
+    receipt = _expect_object(
+        _parse_json_bytes(data, "plugin receipt"),
+        "plugin receipt",
+    )
     if receipt.get("version") != DELIVERY_VERSION:
         raise PublisherError("plugin receipt has an unsupported version")
     if receipt.get("requestId") != request_id:
         raise PublisherError("plugin receipt requestId does not match the request")
-    if receipt.get("status") not in ("accepted", "rejected"):
+    status = receipt.get("status")
+    if status not in ("accepted", "rejected"):
         raise PublisherError("plugin receipt has an unsupported status")
     completed = receipt.get("completedAtEpochMs")
     if isinstance(completed, bool) or not isinstance(completed, int) or completed < 0:
         raise PublisherError("plugin receipt has an invalid completedAtEpochMs")
-    if receipt["status"] == "accepted":
-        _text(receipt.get("callFlowFile"), "plugin receipt.callFlowFile", 32768)
-        node_count = receipt.get("nodeCount")
-        edge_count = receipt.get("edgeCount")
-        if isinstance(node_count, bool) or not isinstance(node_count, int) or node_count < 1:
-            raise PublisherError("plugin receipt has an invalid nodeCount")
-        if isinstance(edge_count, bool) or not isinstance(edge_count, int) or edge_count < 0:
-            raise PublisherError("plugin receipt has an invalid edgeCount")
-        _text(receipt.get("entry"), "plugin receipt.entry", 256, identifier=True)
+
+    if status == "accepted":
+        _expect_exact_fields(
+            receipt,
+            "plugin receipt",
+            (
+                "version",
+                "requestId",
+                "status",
+                "completedAtEpochMs",
+                "topic",
+                "entry",
+                "generated",
+            ),
+        )
+        _text(receipt["topic"], "plugin receipt.topic", 16384)
+        _validate_receipt_entry(receipt["entry"])
+        generated = _expect_object(receipt["generated"], "plugin receipt.generated")
+        _expect_exact_fields(
+            generated,
+            "plugin receipt.generated",
+            ("nodeCount", "edgeCount", "entryNodeId"),
+        )
+        if _non_negative_int(
+            generated["nodeCount"], "plugin receipt.generated.nodeCount"
+        ) < 1:
+            raise PublisherError("plugin receipt.generated.nodeCount must be at least 1")
+        _non_negative_int(
+            generated["edgeCount"], "plugin receipt.generated.edgeCount"
+        )
+        _text(
+            generated["entryNodeId"],
+            "plugin receipt.generated.entryNodeId",
+            256,
+            identifier=True,
+        )
     else:
-        error = _expect_object(receipt.get("error"), "plugin receipt.error")
-        _text(error.get("code"), "plugin receipt.error.code", 256, identifier=True)
-        _text(error.get("message"), "plugin receipt.error.message", 16384)
+        _expect_exact_fields(
+            receipt,
+            "plugin receipt",
+            ("version", "requestId", "status", "completedAtEpochMs", "error"),
+        )
+        error = _expect_object(receipt["error"], "plugin receipt.error")
+        _expect_exact_fields(error, "plugin receipt.error", ("code", "message"))
+        _text(error["code"], "plugin receipt.error.code", 256, identifier=True)
+        _text(error["message"], "plugin receipt.error.message", 16384)
     return receipt
 
 
@@ -748,8 +714,8 @@ def _wait_for_receipt(receipts, final_request, request_id, timeout, keep_receipt
         "unknown",
         request_id,
         receipt_path,
-        "Timed out after Android Studio may have claimed the request; check this receipt path and "
-        "the Call Flow tool window before doing anything else.",
+        "Timed out after Android Studio may have claimed the request; check this receipt "
+        "path and the Call Flow tool window before doing anything else.",
         False,
     )
     return 3
@@ -762,22 +728,26 @@ def main(argv=None):
     if args.expires_in < 10 or args.expires_in > 300:
         raise PublisherError("--expires-in must be between 10 and 300 seconds")
 
-    input_path = Path(args.flow_json).expanduser()
+    input_path = Path(args.request_json).expanduser()
     input_data = _read_input(input_path, args.delete_input, args.temp_root)
-    flow = _validate_call_flow(_parse_json_bytes(input_data, "Call Flow JSON"))
-    _validate_sources(flow, Path.cwd())
+    request = _validate_analysis_request(
+        _parse_json_bytes(input_data, "analysis request JSON")
+    )
+    _validate_entry_source(request, Path.cwd())
 
     inbox, receipts = _exchange_directories(args.temp_root)
     request_id = str(uuid.uuid4())
     created = int(time.time() * 1000)
-    request = dict(flow)
-    request["_delivery"] = {
+    payload_object = dict(request)
+    payload_object["_delivery"] = {
         "version": DELIVERY_VERSION,
         "requestId": request_id,
         "createdAtEpochMs": created,
         "expiresAtEpochMs": created + args.expires_in * 1000,
     }
-    payload = (json.dumps(request, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    payload = (
+        json.dumps(payload_object, ensure_ascii=False, indent=2) + "\n"
+    ).encode("utf-8")
     final_request = _publish_request(inbox, request_id, payload)
     return _wait_for_receipt(
         receipts,

@@ -1,3 +1,5 @@
+import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+
 plugins {
     java
     id("org.jetbrains.intellij.platform") version "2.16.0"
@@ -43,6 +45,10 @@ dependencies {
 
     intellijPlatform {
         local(androidStudioPath)
+        bundledPlugin("com.intellij.java")
+        bundledPlugin("org.jetbrains.kotlin")
+        testFramework(TestFrameworkType.Platform)
+        testFramework(TestFrameworkType.Plugin.Java)
     }
 }
 
@@ -70,9 +76,9 @@ intellijPlatform {
         version = providers.gradleProperty("pluginVersion")
 
         description = """
-            Loads Call Flow JSON files produced by local AI tools for the current
-            Android Studio project. Explore complete call flows with native step-by-step
-            playback, exact source navigation, and a local file inbox.
+            Accepts explicit local analysis requests from the AI Call Flow Navigator
+            Skill, builds a PSI/UAST static Call Flow in Android Studio, and overlays
+            Live Debugger TraceRun observations with exact source navigation.
         """.trimIndent()
 
         vendor {
